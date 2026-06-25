@@ -49,5 +49,15 @@
 
 ---
 
-## 下一步：阶段 A（见 `阶段A设计.md`）
-内容路由（EMA-prototype 最近邻）让专家特化 → controller 才有真东西可分配 → 重测 importance>random。
+## E09 · 阶段 A / Stage 3：nano-MoE + 内容路由（controller 关）
+- **目标**：造一个专家在关键路径、内容路由的 MoE，验证**专家是否特化**（controller 全关，所有被路由专家等量更新）。
+- **结构**：薄主干（embedding + 冻结注意力，无可训练 backbone FFN）；16 专家 top-2 即主路 FFN；router = EMA-prototype 最近邻（cosine）+ 容量限制（防坍塌）；prototype 在线 k-means 更新。文件 `zerograd_moe.py`，仪表盘 `dashboard/stageA.html`。
+- **过程问题与修复**：① lr=0.3 发散→降 0.1；② EMA-prototype 坍塌到 2 专家→加**容量限制路由**（每专家上限+溢出 reroute）；③ purity≈随机→定位路由键问题。
+- **路由键消融（关键发现）**：用**末位置 h**（编码 subject）→ purity 0.29≈随机；**mean-pool**（topic 稀释）→ 0.35；**句首 topic 标记 embedding**（载判别信号）→ **purity 0.67**。
+- **结果**：ppl **5.97 < bigram 6.37**；**purity 0.674 vs random 0.25**；route_H 2.70/2.77（不坍塌、16 专家均衡）；无 NaN。**SPECIALIZED = True**。
+- **判决**：✅ **特化机制成立**——EMA-prototype 内容路由 + 容量管理 → 专家按 topic 特化，前提是**路由键要载到判别性内容**（对 4B/真实语料的启示：routing key 必须捕获判别上下文）。专家现在有真实价值差 → **可进 Stage 4（controller ON，重测 importance>random）**。
+
+---
+
+## 下一步：Stage 4（controller v3 接入特化的 MoE）
+在已特化的专家上打开 controller v3，做 importance vs random/uniform 消融——这次有专家特化撑着，预期 importance>random 能决定性成立。

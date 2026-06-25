@@ -1,0 +1,103 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Zero-Gradient · Phase A / Stage 3 — Expert Specialization</title>
+<style>
+  :root{--bg:#0c0f14;--panel:#141a23;--panel2:#1b232f;--ink:#e7edf5;--mut:#8a98ab;--line:#2a3340;
+    --acc:#5db0ff;--acc2:#ffb454;--good:#3fcf8e;--bad:#ff6b6b;--warn:#ffd166;--mono:ui-monospace,Menlo,monospace;}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,sans-serif}
+  header{padding:16px 24px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  h1{font-size:16px;margin:0;font-weight:650} .sub{color:var(--mut);font-size:12px}
+  .wrap{padding:18px 24px;display:grid;grid-template-columns:repeat(12,1fr);gap:14px;max-width:1500px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:15px}
+  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--mut);margin:0 0 11px}
+  .s4{grid-column:span 4}.s5{grid-column:span 5}.s6{grid-column:span 6}.s7{grid-column:span 7}.s8{grid-column:span 8}.s12{grid-column:span 12}
+  .kpi{display:flex;gap:14px;flex-wrap:wrap}.kpi .k{background:var(--panel2);border-radius:9px;padding:9px 13px;min-width:104px}
+  .kpi .v{font-size:19px;font-weight:680;font-family:var(--mono)}.kpi .l{color:var(--mut);font-size:10.5px;margin-top:2px}
+  canvas{width:100%;display:block}.legend{display:flex;gap:13px;font-size:11.5px;color:var(--mut);margin-top:7px;flex-wrap:wrap}
+  .legend i{display:inline-block;width:11px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+  .verdict{font-size:13px;padding:9px 13px;border-radius:9px;font-weight:650}
+  .empty{color:var(--mut);padding:40px;text-align:center} .muted{color:var(--mut)}
+  .nav{color:var(--acc);text-decoration:none;font-size:12px}
+</style>
+<header>
+  <h1>🧭 Phase A · Stage 3 — Expert Specialization</h1>
+  <span class="sub" id="info">loading…</span><span style="flex:1"></span>
+  <a class="nav" href="index.html">← main dashboard</a>
+</header>
+<div class="wrap" id="root"><div class="empty s12">Loading…</div></div>
+
+<script src="dataA.js" onerror="window.__no=1"></script>
+<script>
+const $=s=>document.querySelector(s);
+const C={acc:'#5db0ff',acc2:'#ffb454',good:'#3fcf8e',bad:'#ff6b6b',mut:'#8a98ab',line:'#2a3340',warn:'#ffd166'};
+function boot(){const d=window.STAGE_A; if(!d){$('#root').innerHTML='<div class="empty s12">No data — run <span style="font-family:monospace">python3 zerograd_moe.py</span>, reload.</div>';return;} render(d);}
+function render(d){
+  const r=$('#root'); r.innerHTML=''; const f=d.final;
+  $('#info').textContent=`${d.ts} · d=${d.config.d_model} · experts=${d.config.n_experts} top-${d.config.k_route} · controller OFF · ${d.wall_s}s`;
+
+  // verdict + KPIs
+  const head=document.createElement('div');
+  const v=document.createElement('div'); v.className='verdict';
+  v.style.background=d.specialized?'#16352a':'#3a1d20'; v.style.color=d.specialized?C.good:C.bad;
+  v.textContent=(d.specialized?'✓ SPECIALIZED':'✗ NOT specialized')+` — topic purity ${d.final_purity} vs random ${d.purity_random_baseline}; routing entropy ${d.final_route_entropy}/${d.max_entropy} (collapse if ≪)`;
+  head.appendChild(v);
+  head.appendChild(kpi([['val ppl',f.val_ppl,f.val_ppl<d.bigram_ppl?'good':''],['acc',f.val_acc],
+    ['topic purity',d.final_purity,'good'],['random purity',d.purity_random_baseline,'mut'],
+    ['route entropy',d.final_route_entropy+'/'+d.max_entropy],['bigram',d.bigram_ppl,'mut'],
+    ['params',(d.param_count/1e3|0)+'K'],['controller','OFF','mut']]));
+  r.appendChild(card('s12','Stage-3 verdict · do experts specialize under content routing?',head));
+
+  // expert x topic heatmap (THE specialization view)
+  const hm=document.createElement('div'); const hc=mkc(hm,560,Math.max(160,d.config.n_experts*16+34));
+  etHeat(hc,d.expert_topic,d.n_topics); hm.appendChild(legend([['few tokens','#16324a'],['many tokens',C.acc]]));
+  r.appendChild(card('s6','Expert × topic assignment (each row = expert, columns = topics)',hm));
+
+  // ppl + purity over steps
+  const q=document.createElement('div'); const qc=mkc(q,560,200);
+  lines(qc,[{pts:d.curve.map(p=>[p.step,p.val_ppl]),color:C.acc},
+            {pts:d.curve.map(p=>[p.step,p.topic_purity*10]),color:C.good}],{hline:d.bigram_ppl});
+  q.appendChild(legend([['val ppl',C.acc],['topic purity ×10',C.good],['bigram',C.mut]]));
+  r.appendChild(card('s6','Quality + specialization over training',q));
+
+  // routing entropy curve
+  const e=document.createElement('div'); const ec=mkc(e,560,180);
+  lines(ec,[{pts:d.ent_curve.map(p=>[p.step,p.route_entropy]),color:C.acc2}],{hline:d.max_entropy});
+  e.appendChild(legend([['routing entropy',C.acc2],['max (=ln N, no collapse)',C.mut]]));
+  r.appendChild(card('s6','Routing entropy (collapse check)',e));
+
+  // prototype drift
+  const dr=document.createElement('div'); const drc=mkc(dr,560,180);
+  lines(drc,[{pts:d.drift_curve.map(p=>[p.step,p.drift]),color:C.warn}],{});
+  dr.appendChild(legend([['prototype drift / step',C.warn]]));
+  r.appendChild(card('s6','EMA-prototype drift (online k-means settling)',dr));
+
+  // expert usage + per-expert loss
+  const u=document.createElement('div'); const uc=mkc(u,560,Math.max(160,d.config.n_experts*15+20));
+  bars(uc,d.usage.map((v,i)=>['E'+i,v]),C.acc); r.appendChild(card('s6','Expert usage (val token counts)',u));
+  const a=document.createElement('div'); const ac=mkc(a,560,Math.max(160,d.config.n_experts*15+20));
+  bars(ac,d.expert_act.map((v,i)=>['E'+i,v]),C.good); r.appendChild(card('s6','Per-expert activation strength (EMA)',a));
+
+  const an=document.createElement('div'); an.innerHTML=(d.anomalies&&d.anomalies.length)?
+    '<span style="color:'+C.warn+'">'+d.anomalies.length+' anomalies</span>':'<span class="muted">No NaN/Inf anomalies. ✓</span>';
+  r.appendChild(card('s12','Health',an));
+}
+function card(s,t,b){const c=document.createElement('div');c.className='card '+s;c.innerHTML=`<h2>${t}</h2>`;c.appendChild(b);return c;}
+function kpi(items){const w=document.createElement('div');w.className='kpi';w.style.marginTop='10px';for(const[l,val,cls]of items){const k=document.createElement('div');k.className='k';const col=cls==='good'?C.good:cls==='mut'?C.mut:'#e7edf5';k.innerHTML=`<div class="v" style="color:${col}">${val}</div><div class="l">${l}</div>`;w.appendChild(k);}return w;}
+function legend(items){const l=document.createElement('div');l.className='legend';l.innerHTML=items.map(([t,c])=>`<span><i style="background:${c}"></i>${t}</span>`).join('');return l;}
+function mkc(p,w,h){const c=document.createElement('canvas');const dpr=devicePixelRatio||1;c.width=w*dpr;c.height=h*dpr;c.style.height=h+'px';c.getContext('2d').scale(dpr,dpr);c._W=w;c._H=h;p.appendChild(c);return c;}
+function lines(cv,series,opt){const ctx=cv.getContext('2d'),W=cv._W,H=cv._H,pad={l:42,r:12,t:12,b:22};
+  const xs=series.flatMap(s=>s.pts.map(p=>p[0])),ys=series.flatMap(s=>s.pts.map(p=>p[1]));
+  let ymin=Math.min(...ys),ymax=Math.max(...ys);if(opt.hline!=null){ymax=Math.max(ymax,opt.hline);ymin=Math.min(ymin,opt.hline);}
+  const xmin=Math.min(...xs),xmax=Math.max(...xs),yr=(ymax-ymin)||1;ymin-=yr*.08;ymax+=yr*.08;
+  const X=x=>pad.l+(W-pad.l-pad.r)*(x-xmin)/((xmax-xmin)||1),Y=y=>H-pad.b-(H-pad.t-pad.b)*(y-ymin)/((ymax-ymin)||1);
+  ctx.font='10px ui-monospace';for(let i=0;i<=4;i++){const val=ymin+(ymax-ymin)*i/4,y=Y(val);ctx.strokeStyle=C.line;ctx.globalAlpha=.5;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();ctx.globalAlpha=1;ctx.fillStyle=C.mut;ctx.fillText(val.toFixed(1),4,y+3);}
+  if(opt.hline!=null){const y=Y(opt.hline);ctx.strokeStyle=C.mut;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();ctx.setLineDash([]);}
+  for(const s of series){ctx.strokeStyle=s.color;ctx.lineWidth=2;ctx.beginPath();s.pts.forEach((p,i)=>{const x=X(p[0]),y=Y(p[1]);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();}}
+function bars(cv,items,color){const ctx=cv.getContext('2d'),W=cv._W,H=cv._H,pad={l:36,r:30,t:6,b:6},n=items.length,bh=(H-pad.t-pad.b)/n,mx=Math.max(...items.map(i=>i[1]),1e-6);ctx.font='10px ui-monospace';
+  items.forEach((it,i)=>{const y=pad.t+i*bh,w=(W-pad.l-pad.r)*it[1]/mx;ctx.fillStyle=color;ctx.fillRect(pad.l,y+1.5,w,bh-3);ctx.fillStyle=C.mut;ctx.fillText(it[0],4,y+bh/2+3);ctx.fillStyle='#cdd7e3';ctx.fillText((+it[1]).toFixed(it[1]<10?2:0),pad.l+w+3,y+bh/2+3);});}
+function etHeat(cv,M,K){const ctx=cv.getContext('2d'),W=cv._W,H=cv._H,pad={l:36,r:10,t:18,b:6},rows=M.length;
+  const all=M.flat();let mx=Math.max(...all,1e-6);const cw=(W-pad.l-pad.r)/K,rh=(H-pad.t-pad.b)/rows;ctx.font='10px ui-monospace';ctx.fillStyle=C.mut;
+  for(let t=0;t<K;t++)ctx.fillText('t'+t,pad.l+t*cw+cw/2-6,12);
+  M.forEach((row,rI)=>{const tot=row.reduce((a,b)=>a+b,0)||1;row.forEach((v,c)=>{const u=v/mx;ctx.fillStyle=`rgb(${22+(93-22)*u|0},${50+(176-50)*u|0},${74+(255-74)*u|0})`;ctx.fillRect(pad.l+c*cw,pad.t+rI*rh,cw+.5,rh+.5);});ctx.fillStyle=C.mut;ctx.fillText('E'+rI,2,pad.t+rI*rh+rh/2+3);});}
+boot();
+</script>

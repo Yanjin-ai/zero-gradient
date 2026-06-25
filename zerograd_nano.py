@@ -133,25 +133,27 @@ def build_corpus(cfg: Config):
     obj =["bridge","garden","machine","forest","tower","signal","harvest","stone"]
     # per-topic subject->verb map (distinct across topics) => verb needs topic AND subject
     tmap={t:{s:verb[(subj.index(s)+3*t)%len(verb)] for s in subj} for t in range(K)}
-    sents=[]
+    sents=[]; sent_top=[]
     for _ in range(cfg.n_sentences):
         t=rng.randrange(K); s=rng.choice(subj)
         sents.append([topics[t],"the",rng.choice(adj),s,tmap[t][s],"the",rng.choice(adj),rng.choice(obj)])
+        sent_top.append(t)
     from collections import Counter
     allw=[w for s in sents for w in s]
     vocab=["<pad>","<unk>"]+[w for w,_ in Counter(allw).most_common(cfg.vocab_cap-2)]
     stoi={w:i for i,w in enumerate(vocab)}; PAD=stoi["<pad>"]
     enc=[[stoi.get(w,1) for w in s] for s in sents]
-    X,Y=[],[]
-    for s in enc:                                   # per-sentence left-padded windows (topic always in context)
+    X,Y,T=[],[],[]
+    for si,s in enumerate(enc):                     # per-sentence left-padded windows (topic always in context)
         for i in range(2,len(s)):
             ctx=s[max(0,i-cfg.seq_len):i]; ctx=[PAD]*(cfg.seq_len-len(ctx))+ctx
-            X.append(ctx); Y.append(s[i])
-    X=torch.tensor(X,dtype=torch.long); Y=torch.tensor(Y,dtype=torch.long)
-    perm=torch.randperm(len(X),generator=torch.Generator().manual_seed(SEED)); X,Y=X[perm],Y[perm]
+            X.append(ctx); Y.append(s[i]); T.append(sent_top[si])
+    X=torch.tensor(X,dtype=torch.long); Y=torch.tensor(Y,dtype=torch.long); T=torch.tensor(T,dtype=torch.long)
+    perm=torch.randperm(len(X),generator=torch.Generator().manual_seed(SEED)); X,Y,T=X[perm],Y[perm],T[perm]
     nval=max(256,len(X)//10)
     d=dict(Xtr=X[nval:].to(DEVICE),Ytr=Y[nval:].to(DEVICE),Xval=X[:nval].to(DEVICE),
-           Yval=Y[:nval].to(DEVICE),vocab=vocab,stoi=stoi)
+           Yval=Y[:nval].to(DEVICE),Ttr=T[nval:].to(DEVICE),Tval=T[:nval].to(DEVICE),
+           n_topics=K,vocab=vocab,stoi=stoi)
     V=len(vocab)
     # unigram baseline
     cnt=torch.bincount(d["Ytr"],minlength=V).float()+1e-6; p=cnt/cnt.sum()
