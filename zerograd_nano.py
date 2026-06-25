@@ -97,11 +97,14 @@ class Config:
     # controller (locked math)
     ema_rho: float = 0.9               # beta for stats AND rho for score EMA
     tau: float = 1.0
-    lam_lev: float = 1.5               # leverage  (||dW|| ~ expected final-loss reduction)
-    lam_learn: float = 1.0             # learnability (local error still dropping)
-    lam_act: float = 0.3               # activation strength
+    # v3 controller: coverage(deficit) is a first-class term (matters for sparse experts), but B
+    # showed the decisive importance>random win needs expert SPECIALIZATION -> arrives in phase A.
+    lam_cov: float = 1.0               # coverage = routed-traffic minus update-count (under-served experts)
+    lam_lev: float = 0.8               # leverage  (||dW|| ~ expected final-loss reduction)
+    lam_learn: float = 0.8             # learnability (local error still dropping)
+    lam_act: float = 0.2               # activation strength
     lam_cost: float = 0.2              # cost penalty
-    load_balance: float = 0.5
+    load_balance: float = 0.0          # (legacy; coverage now handled by lam_cov)
     soft_floor: float = 0.15
     routing_mode: str = "importance"   # importance | random | uniform | fixed_topk
 
@@ -220,7 +223,7 @@ class Controller:
     def __init__(self, cfg: Config):
         n=cfg.n_experts; self.cfg=cfg
         self.m_err=torch.full((n,),float("nan")); self.m_act=torch.zeros(n); self.m_lev=torch.zeros(n)
-        self.learn=torch.zeros(n); self.usage=torch.zeros(n)
+        self.learn=torch.zeros(n); self.usage=torch.zeros(n); self.update_ema=torch.zeros(n)
         self.s=torch.zeros(n); self.s_ema=torch.zeros(n); self.budget=torch.zeros(n)
 
     @staticmethod
@@ -242,9 +245,10 @@ class Controller:
     def score_select(self, cand, step):
         c=self.cfg; mask=torch.zeros(c.n_experts,dtype=torch.bool); mask[cand]=True
         cost=torch.ones(c.n_experts)
-        s=(c.lam_lev*self._z(self.m_lev,mask)+c.lam_learn*self._z(self.learn,mask)
-           +c.lam_act*self._z(self.m_act,mask)-c.lam_cost*self._z(cost,mask)
-           -c.load_balance*self._z(self.usage,mask))
+        deficit=self.usage-self.update_ema                       # routed-but-under-updated -> needs coverage
+        s=(c.lam_cov*self._z(deficit,mask)+c.lam_lev*self._z(self.m_lev,mask)
+           +c.lam_learn*self._z(self.learn,mask)+c.lam_act*self._z(self.m_act,mask)
+           -c.lam_cost*self._z(cost,mask)-c.load_balance*self._z(self.usage,mask))
         self.s=s; self.s_ema=c.ema_rho*self.s_ema+(1-c.ema_rho)*s
         sc=self.s_ema.clone(); sc[~mask]=float("-inf"); self.budget=torch.softmax(sc/c.tau,0)
         k=min(c.k_update,int(mask.sum()))
@@ -255,6 +259,9 @@ class Controller:
         elif c.routing_mode=="fixed_topk":sel=set(cand[:k].tolist())
         else:
             order=torch.argsort(self.s_ema[cand],descending=True); sel=set(cand[order[:k]].tolist())
+        selm=torch.zeros(c.n_experts);
+        if sel: selm[list(sel)]=1.0
+        self.update_ema=0.95*self.update_ema+0.05*selm           # track coverage
         return sel
 
 
