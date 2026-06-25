@@ -77,20 +77,21 @@ class Config:
     name: str = "nano"
     d_model: int = 64
     n_backbone: int = 3
-    n_experts: int = 16
+    n_experts: int = 32                # sparsity ratio toward 4B (sparse:backbone ~ 10:1)
     k_fwd: int = 4
-    k_update: int = 6
+    k_update: int = 10
     iter_high: int = 2                 # local iterations granted to selected experts
     seq_len: int = 12
     vocab_cap: int = 256
     n_sentences: int = 6000
-    steps: int = 500
+    steps: int = 1000
     batch_size: int = 64
-    lr_backbone: float = 0.05
-    lr_expert: float = 0.05
-    lr_head: float = 0.05
-    lr_embed: float = 0.02
-    eval_every: int = 15               # shortened review interval
+    lr_backbone: float = 0.3
+    lr_expert: float = 0.3
+    lr_head: float = 0.3
+    lr_embed: float = 0.15
+    expert_init: float = 0.01          # small init -> experts start ~neutral, grow only where useful
+    eval_every: int = 25               # shortened review interval
     eval_batches: int = 16
     time_limit_s: float = 90.0
     # controller (locked math)
@@ -107,7 +108,7 @@ class Config:
     def param_count(self) -> int:
         V, d = self.vocab_cap, self.d_model
         return (V*d + self.seq_len*d + self.n_backbone*(d*d+d) + self.n_experts*(d*d+d)
-                + self.n_backbone*(d*V+V) + (d*V+V))
+                + self.n_backbone*(d*V+V))      # readout = last block's deeply-supervised head
 
 
 P4B = Config(name="4B", d_model=1024, n_backbone=8, n_experts=3700, seq_len=512, vocab_cap=32000)
@@ -117,28 +118,33 @@ P4B = Config(name="4B", d_model=1024, n_backbone=8, n_experts=3700, seq_len=512,
 # DATA — structured synthetic corpus (strong learnable structure, offline, reproducible)
 # ======================================================================================
 def build_corpus(cfg: Config):
-    rng = random.Random(SEED)
+    # CONTEXT-DEPENDENT structure: K topics; the same subject maps to DIFFERENT verbs per topic.
+    # The topic marker sits at the sentence start -> bigram (last token only) cannot predict the
+    # verb (it averages over topics); a context model + topic-specialized experts can. This leaves
+    # real "beyond-bigram" residual for the expert bank / router to capture.
+    rng=random.Random(SEED); K=4
+    topics=[f"<t{t}>" for t in range(K)]
     subj=["robot","cat","river","engine","child","wizard","planet","farmer"]
     verb=["builds","watches","carries","breaks","finds","guards","paints","feeds"]
     adj =["bright","silent","heavy","ancient","tiny","golden","frozen","wild"]
     obj =["bridge","garden","machine","forest","tower","signal","harvest","stone"]
-    conj=["and then","because","while","so"]
-    pref={s: rng.sample(verb,3) for s in subj}
+    # per-topic subject->verb map (distinct across topics) => verb needs topic AND subject
+    tmap={t:{s:verb[(subj.index(s)+3*t)%len(verb)] for s in subj} for t in range(K)}
     sents=[]
     for _ in range(cfg.n_sentences):
-        s=rng.choice(subj); v=rng.choice(pref[s])
-        parts=["the",rng.choice(adj),s,v,"the",rng.choice(adj),rng.choice(obj)]
-        if rng.random()<0.5: parts+=[rng.choice(conj),"the",rng.choice(adj),rng.choice(obj)]
-        sents.append(" ".join(parts))
-    toks=(" <eos> ".join(sents)).split()
+        t=rng.randrange(K); s=rng.choice(subj)
+        sents.append([topics[t],"the",rng.choice(adj),s,tmap[t][s],"the",rng.choice(adj),rng.choice(obj)])
     from collections import Counter
-    vocab=["<pad>","<unk>","<eos>"]+[w for w,_ in Counter(toks).most_common(cfg.vocab_cap-3)]
-    stoi={w:i for i,w in enumerate(vocab)}
-    ids=torch.tensor([stoi.get(w,1) for w in toks],dtype=torch.long)
+    allw=[w for s in sents for w in s]
+    vocab=["<pad>","<unk>"]+[w for w,_ in Counter(allw).most_common(cfg.vocab_cap-2)]
+    stoi={w:i for i,w in enumerate(vocab)}; PAD=stoi["<pad>"]
+    enc=[[stoi.get(w,1) for w in s] for s in sents]
     X,Y=[],[]
-    for i in range(0,len(ids)-cfg.seq_len-1,3):
-        X.append(ids[i:i+cfg.seq_len]); Y.append(ids[i+cfg.seq_len])
-    X=torch.stack(X); Y=torch.stack(Y)
+    for s in enc:                                   # per-sentence left-padded windows (topic always in context)
+        for i in range(2,len(s)):
+            ctx=s[max(0,i-cfg.seq_len):i]; ctx=[PAD]*(cfg.seq_len-len(ctx))+ctx
+            X.append(ctx); Y.append(s[i])
+    X=torch.tensor(X,dtype=torch.long); Y=torch.tensor(Y,dtype=torch.long)
     perm=torch.randperm(len(X),generator=torch.Generator().manual_seed(SEED)); X,Y=X[perm],Y[perm]
     nval=max(256,len(X)//10)
     d=dict(Xtr=X[nval:].to(DEVICE),Ytr=Y[nval:].to(DEVICE),Xval=X[:nval].to(DEVICE),
@@ -172,12 +178,11 @@ class ZeroGradLM:
         self.Wq=init_(d,d,scale=1/math.sqrt(d)); self.Wk=init_(d,d,scale=1/math.sqrt(d))   # frozen
         self.Wb=[init_(d,d,scale=1/math.sqrt(d)) for _ in range(cfg.n_backbone)]
         self.bb=[torch.zeros(d,dtype=DTYPE,device=DEVICE) for _ in range(cfg.n_backbone)]
-        self.We=[init_(d,d,scale=1/math.sqrt(d)) for _ in range(cfg.n_experts)]
+        self.We=[init_(d,d,scale=cfg.expert_init) for _ in range(cfg.n_experts)]   # start ~neutral
         self.be=[torch.zeros(d,dtype=DTYPE,device=DEVICE) for _ in range(cfg.n_experts)]
         self.Ekey=init_(cfg.n_experts,d,scale=1/math.sqrt(d))                                # frozen router
         self.Hb=[init_(d,V,scale=1/math.sqrt(d)) for _ in range(cfg.n_backbone)]
         self.bHb=[torch.zeros(V,dtype=DTYPE,device=DEVICE) for _ in range(cfg.n_backbone)]
-        self.Hf=init_(d,V,scale=1/math.sqrt(d)); self.bf=torch.zeros(V,dtype=DTYPE,device=DEVICE)
         self.num_params=cfg.param_count()
 
     def context(self,x):
@@ -188,7 +193,7 @@ class ZeroGradLM:
         mixed=h+att@h                                            # residual around frozen attention
         return mixed[:,-1], att[:,-1,:]
 
-    def logits(self,h): return h@self.Hf+self.bf
+    def logits(self,h): return h@self.Hb[-1]+self.bHb[-1]   # unified readout = last block's head
     def route(self,h): return torch.topk(h@self.Ekey.T,self.cfg.k_fwd,dim=-1).indices
 
     def forward_states(self,x):
@@ -256,15 +261,18 @@ class Controller:
 # ======================================================================================
 # TRAIN + EVAL
 # ======================================================================================
-def evaluate(model, X, Y, cfg):
+def evaluate(model, X, Y, cfg, use_experts=True):
     nll,corr,n=0.0,0,0
     for i in range(0,min(len(X),cfg.eval_batches*cfg.batch_size),cfg.batch_size):
         xb,yb=X[i:i+cfg.batch_size],Y[i:i+cfg.batch_size]; st=model.forward_states(xb)
-        h=st["h_back"]; topk=st["topk"]; B=xb.shape[0]; cand=torch.unique(topk).flatten()
-        mix=torch.zeros_like(h)
-        for e in cand.tolist():
-            m=(topk==e).any(dim=1); mix[m]+=torch.relu(h[m]@model.We[e]+model.be[e])
-        logits=model.logits(h+mix/cfg.k_fwd); logp=logits-logits.logsumexp(-1,keepdim=True)
+        h=st["h_back"]; topk=st["topk"]; B=xb.shape[0]
+        rep=h
+        if use_experts:
+            cand=torch.unique(topk).flatten(); mix=torch.zeros_like(h)
+            for e in cand.tolist():
+                m=(topk==e).any(dim=1); mix[m]+=torch.relu(h[m]@model.We[e]+model.be[e])
+            rep=h+mix/cfg.k_fwd
+        logits=model.logits(rep); logp=logits-logits.logsumexp(-1,keepdim=True)
         nll+=float(-logp[torch.arange(B),yb].sum()); n+=B; corr+=int((logits.argmax(-1)==yb).sum())
     return math.exp(nll/n), corr/n
 
@@ -294,13 +302,13 @@ def train(cfg: Config, data):
         mix=torch.zeros_like(h)
         for e in cand.tolist(): mix[route_mask[e]]+=torch.relu(h[route_mask[e]]@model.We[e]+model.be[e])
         h_final=h+mix/cfg.k_fwd
-        fL,dhf,dHf,dbf=ce_delta(h_final,yb,model.Hf,model.bf)
-        model.Hf-=cfg.lr_head*dHf; model.bf-=cfg.lr_head*dbf
+        fL,dhf,dHf,dbf=ce_delta(h_final,yb,model.Hb[-1],model.bHb[-1])
+        model.Hb[-1]-=cfg.lr_head*dHf; model.bHb[-1]-=cfg.lr_head*dbf
 
         err,act,lev,state={},{},{},{}; touched=torch.zeros(cfg.n_experts)
         for e in cand.tolist():
             m=route_mask[e]; inp=h[m]; z=inp@model.We[e]+model.be[e]; he=torch.relu(z); mm=int(m.sum())
-            comp=(h[m]+he)@model.Hf+model.bf; clp=comp-comp.logsumexp(-1,keepdim=True)
+            comp=(h[m]+he)@model.Hb[-1]+model.bHb[-1]; clp=comp-comp.logsumexp(-1,keepdim=True)
             err[e]=float(-clp[torch.arange(mm),yb[m]].mean()); act[e]=float(he.norm()/math.sqrt(mm))
             dz=(dhf[m]/cfg.k_fwd)*(z>0).to(DTYPE); dWe=inp.T@dz
             lev[e]=float(dWe.norm()); state[e]=(inp,z,m); touched[e]=1.0
@@ -315,9 +323,9 @@ def train(cfg: Config, data):
             tot=0.0
             for _ in range(iters):                                  # selected -> more local iterations
                 z=inp@model.We[e]+model.be[e]; he=torch.relu(z)
-                comp=(model._eval_h(inp,h,m) if False else (h[m]+he))@model.Hf+model.bf
+                comp=(h[m]+he)@model.Hb[-1]+model.bHb[-1]
                 p=torch.softmax(comp,-1); p[torch.arange(int(m.sum())),yb[m]]-=1.0; p/=int(m.sum())
-                dz=(p@model.Hf.T)*(z>0).to(DTYPE); dWe=inp.T@dz
+                dz=(p@model.Hb[-1].T)*(z>0).to(DTYPE); dWe=inp.T@dz
                 model.We[e]-=scale*dWe; model.be[e]-=scale*dz.sum(0); tot+=float(dWe.norm())*scale
             upd_norm[e]=tot
 
@@ -337,10 +345,12 @@ def train(cfg: Config, data):
             tppl,_=evaluate(model,data["Xtr"][:cfg.eval_batches*cfg.batch_size],data["Ytr"][:cfg.eval_batches*cfg.batch_size],cfg)
             curve.append(dict(step=step,val_ppl=round(ppl,3),val_acc=round(acc,4),train_ppl=round(tppl,3),monitor_loss=round(monitor,4)))
 
+    bb_ppl,_=evaluate(model,data["Xval"],data["Yval"],cfg,use_experts=False)   # backbone-only diagnostic
     # score stability = mean over experts of std of s_ema over time (lower = more stable)
     stab=float(np.mean([np.std(v[-20:]) for v in unit_hist.values() if len(v)>=2])) if curve else float("nan")
     return dict(curve=curve,unit_hist=unit_hist,sel_hist=sel_hist,anomalies=anomalies,
                 wall_s=round(time.time()-t0,2),final=curve[-1] if curve else None,
+                backbone_only_ppl=round(bb_ppl,3),
                 cycles=cycles,score_stability=round(stab,4),
                 peak_mem_mb=(round(torch.cuda.max_memory_allocated()/2**20,1) if torch.cuda.is_available() else None))
 
