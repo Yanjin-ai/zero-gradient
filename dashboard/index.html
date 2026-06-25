@@ -2,168 +2,145 @@
 <meta charset="utf-8">
 <title>Zero-Gradient · Experiment Dashboard</title>
 <style>
-  :root{
-    --bg:#0c0f14; --panel:#141a23; --panel2:#1b232f; --ink:#e7edf5; --mut:#8a98ab;
-    --line:#2a3340; --acc:#5db0ff; --acc2:#ffb454; --good:#3fcf8e; --bad:#ff6b6b; --warn:#ffd166;
-    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,sans-serif}
-  header{padding:18px 24px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-  h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.2px}
-  .sub{color:var(--mut);font-size:12px}
-  .wrap{padding:20px 24px;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;max-width:1500px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
-  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--mut);margin:0 0 12px}
-  .span4{grid-column:span 4}.span6{grid-column:span 6}.span8{grid-column:span 8}.span12{grid-column:span 12}
-  .kpi{display:flex;gap:18px;flex-wrap:wrap}
-  .kpi .k{background:var(--panel2);border-radius:9px;padding:10px 14px;min-width:120px}
-  .kpi .k .v{font-size:20px;font-weight:680;font-family:var(--mono)}
-  .kpi .k .l{color:var(--mut);font-size:11px;margin-top:2px}
-  .gate{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--panel2);margin-bottom:7px;font-size:13px}
-  .gate .dot{width:9px;height:9px;border-radius:50%;flex:none}
-  .pass{color:var(--good)} .fail{color:var(--bad)}
+  :root{--bg:#0c0f14;--panel:#141a23;--panel2:#1b232f;--ink:#e7edf5;--mut:#8a98ab;--line:#2a3340;
+    --acc:#5db0ff;--acc2:#ffb454;--acc3:#b488ff;--acc4:#5ad1c0;--good:#3fcf8e;--bad:#ff6b6b;--warn:#ffd166;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,sans-serif}
+  header{padding:16px 24px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  h1{font-size:16px;margin:0;font-weight:650} .sub{color:var(--mut);font-size:12px}
+  .wrap{padding:18px 24px;display:grid;grid-template-columns:repeat(12,1fr);gap:14px;max-width:1560px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:15px}
+  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--mut);margin:0 0 11px}
+  .s3{grid-column:span 3}.s4{grid-column:span 4}.s5{grid-column:span 5}.s6{grid-column:span 6}.s7{grid-column:span 7}.s8{grid-column:span 8}.s12{grid-column:span 12}
+  .kpi{display:flex;gap:14px;flex-wrap:wrap} .kpi .k{background:var(--panel2);border-radius:9px;padding:9px 13px;min-width:96px}
+  .kpi .v{font-size:18px;font-weight:680;font-family:var(--mono)} .kpi .l{color:var(--mut);font-size:10.5px;margin-top:2px}
+  .gate{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:8px;background:var(--panel2);margin-bottom:6px;font-size:12.5px}
+  .gate .dot{width:8px;height:8px;border-radius:50%;flex:none} .pass{color:var(--good)} .fail{color:var(--bad)}
   .gate.head{outline:1px solid var(--acc);background:#16202c}
-  canvas{width:100%;display:block}
-  .legend{display:flex;gap:14px;font-size:12px;color:var(--mut);margin-top:8px;flex-wrap:wrap}
+  canvas{width:100%;display:block} .legend{display:flex;gap:13px;font-size:11.5px;color:var(--mut);margin-top:7px;flex-wrap:wrap}
   .legend i{display:inline-block;width:11px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
-  .empty{color:var(--mut);padding:40px;text-align:center}
-  button,label.file{background:var(--acc);color:#04121f;border:0;border-radius:8px;padding:7px 13px;font-weight:650;cursor:pointer;font-size:13px}
-  .muted{color:var(--mut)} .mono{font-family:var(--mono)}
-  table{width:100%;border-collapse:collapse;font-size:12px}
-  td,th{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left}
-  .anom{color:var(--warn)}
+  .empty{color:var(--mut);padding:40px;text-align:center} button{background:var(--acc);color:#04121f;border:0;border-radius:8px;padding:7px 13px;font-weight:650;cursor:pointer}
+  table{width:100%;border-collapse:collapse;font-size:12px} td,th{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+  th{color:var(--mut);font-weight:600;font-size:11px} .mono{font-family:var(--mono)} .muted{color:var(--mut)}
+  .dl{display:grid;grid-template-columns:120px 1fr;gap:4px 12px;font-size:12.5px} .dl b{color:var(--acc);font-weight:600}
+  .cond{display:flex;gap:8px;align-items:flex-start;margin-bottom:9px} .cond .b{font-weight:650;font-size:12px}
+  .pill{font-family:var(--mono);font-size:11px;padding:1px 7px;border-radius:20px}
 </style>
-
 <header>
   <h1>⚡ Zero-Gradient · Experiment Dashboard</h1>
-  <span class="sub" id="runinfo">loading…</span>
-  <span style="flex:1"></span>
+  <span class="sub" id="runinfo">loading…</span><span style="flex:1"></span>
   <button onclick="location.reload()">↻ Reload</button>
-  <label class="file">Load run.json<input type="file" id="fileinput" hidden accept="application/json"></label>
 </header>
-
-<div class="wrap" id="root"><div class="empty span12">Loading <span class="mono">runs/run.json</span> …</div></div>
+<div class="wrap" id="root"><div class="empty s12">Loading…</div></div>
 
 <script src="data.js" onerror="window.__noData=1"></script>
 <script>
-const $=(s)=>document.querySelector(s);
-const C={acc:'#5db0ff',acc2:'#ffb454',good:'#3fcf8e',bad:'#ff6b6b',mut:'#8a98ab',line:'#2a3340',warn:'#ffd166'};
-
-async function load(){
-  let data=window.RUN_DATA||null;                       // embedded by the training script (data.js)
-  if(!data){ try{ const r=await fetch('../runs/run.json',{cache:'no-store'}); if(r.ok) data=await r.json(); }catch(e){} }
-  if(!data){ $('#root').innerHTML='<div class="empty span12">No data. Run <span class="mono">python3 zerograd_nano.py</span> (writes dashboard/data.js), then reload — or use <b>Load run.json</b> at top-right.</div>'; return; }
-  render(data);
+const $=s=>document.querySelector(s);
+const C={acc:'#5db0ff',acc2:'#ffb454',acc3:'#b488ff',acc4:'#5ad1c0',good:'#3fcf8e',bad:'#ff6b6b',mut:'#8a98ab',line:'#2a3340',warn:'#ffd166'};
+function boot(){
+  let D=window.RUN_DATA||null;
+  if(!D){$('#root').innerHTML='<div class="empty s12">No data. Run <span class="mono">python3 zerograd_nano.py</span> then reload.</div>';return;}
+  render(D.latest,D.history||[]);
 }
-$('#fileinput').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>render(JSON.parse(rd.result));rd.readAsText(f);});
+function render(d,history){
+  const r=$('#root'); r.innerHTML=''; const M=d.metrics, modes=['importance','random','uniform','fixed_topk'];
+  const mc={importance:C.acc,random:C.acc2,uniform:C.acc3,fixed_topk:C.acc4};
+  $('#runinfo').textContent=`${d.ts} · d=${d.config.d_model} · backbone=${d.config.n_backbone} · experts=${d.config.n_experts} · k_upd=${d.config.k_update} · run #${history.length}`;
 
-function render(d){
-  const root=$('#root'); root.innerHTML='';
-  const imp=d.importance, rnd=d.random;
-  $('#runinfo').textContent=`config=${d.config.name} · d=${d.config.d_model} · backbone=${d.config.n_backbone} · experts=${d.config.n_experts} · k_upd=${d.config.k_update} · wall=${imp.wall_s}s`;
-
-  // ---- KPI strip ----
-  root.appendChild(card('span12','Run summary', kpiStrip([
-    ['nano params',(d.param_count_nano/1e3).toFixed(0)+'K'],
-    ['4B-preset params',(d.param_count_4B/1e9).toFixed(2)+'B'],
-    ['importance ppl',imp.final.val_ppl,imp.final.val_ppl<rnd.final.val_ppl?'good':'bad'],
-    ['random ppl',rnd.final.val_ppl],
-    ['unigram ppl',d.unigram_ppl,'mut'],
+  // KPI
+  r.appendChild(card('s12','Run summary',kpi([
+    ['nano params',(d.param_count_nano/1e3|0)+'K'],['4B preset',(d.param_count_4B/1e9).toFixed(2)+'B'],
+    ['importance ppl',M.importance_ppl,M.importance_ppl<M.random_ppl?'good':'bad'],
+    ['random ppl',M.random_ppl],['uniform ppl',M.uniform_ppl],['fixed-topk ppl',M.fixed_topk_ppl],
+    ['unigram',d.unigram_ppl,'mut'],['bigram',d.bigram_ppl,'mut'],
+    ['imp−rnd gap',M.importance_vs_random_gap,M.importance_vs_random_gap>0?'good':'bad'],
+    ['score stab',M.score_stability],['wall',d.metrics.wall_s+'s','mut'],
     ['gates',`${d.gates_passed}/${d.gates_total}`,d.gates_passed===d.gates_total?'good':'warn'],
   ])));
 
-  // ---- gates ----
-  const gwrap=document.createElement('div');
-  for(const [k,v] of Object.entries(d.gates)){
-    const head=k.includes('HEADLINE');
-    const el=document.createElement('div'); el.className='gate'+(head?' head':'');
-    el.innerHTML=`<span class="dot" style="background:${v?C.good:C.bad}"></span>
-      <span class="${v?'pass':'fail'}" style="font-weight:650">${v?'PASS':'FAIL'}</span>
-      <span>${k}</span>`;
-    gwrap.appendChild(el);
-  }
-  root.appendChild(card('span6','Gates',gwrap));
+  // Gates
+  const gw=document.createElement('div');
+  for(const [k,v] of Object.entries(d.gates)){const h=k.includes('HEADLINE');const e=document.createElement('div');
+    e.className='gate'+(h?' head':'');e.innerHTML=`<span class="dot" style="background:${v?C.good:C.bad}"></span><span class="${v?'pass':'fail'}" style="font-weight:650">${v?'PASS':'FAIL'}</span><span>${k}</span>`;gw.appendChild(e);}
+  r.appendChild(card('s5','Compliance gates',gw));
 
-  // ---- ppl curves (the headline ablation) ----
-  const pc=document.createElement('div');
-  const cv=mkcanvas(pc,560,230);
-  lineChart(cv,[
-    {pts:imp.curve.map(p=>[p.step,p.val_ppl]),color:C.acc,label:'importance routing'},
-    {pts:rnd.curve.map(p=>[p.step,p.val_ppl]),color:C.acc2,label:'random routing'},
-  ],{hline:d.unigram_ppl,hlabel:'unigram',ylabel:'val perplexity'});
-  pc.appendChild(legend([['importance routing',C.acc],['random routing',C.acc2],['unigram',C.mut]]));
-  root.appendChild(card('span6','Headline ablation · val perplexity ↓',pc));
+  // 4-condition closed loop status
+  const cond=document.createElement('div');
+  const conds=[
+    ['5.1 model can learn', d.gates['ppl < unigram'] && d.gates['ppl < bigram'], `val_ppl=${M.importance_ppl} vs unigram ${d.unigram_ppl} / bigram ${d.bigram_ppl}`],
+    ['5.2 score stable', M.score_stability<5, `score stability=${M.score_stability} (lower better, target <5)`],
+    ['5.3 importance > random', M.importance_vs_random_gap>0, `gap=${M.importance_vs_random_gap} (importance ${M.importance_ppl} vs random ${M.random_ppl})`],
+    ['5.4 system gains real', d.metrics.peak_mem_mb!=null, d.metrics.peak_mem_mb!=null?`peak_mem=${d.metrics.peak_mem_mb}MB`:'measured on Kaggle T4 only (CPU here)'],
+  ];
+  conds.forEach(([t,ok,sub])=>{const e=document.createElement('div');e.className='cond';
+    e.innerHTML=`<span class="pill" style="background:${ok?'#16352a':'#3a1d20'};color:${ok?C.good:C.bad}">${ok?'OK':'…'}</span><div><div class="b">${t}</div><div class="muted" style="font-size:11.5px">${sub}</div></div>`;cond.appendChild(e);});
+  r.appendChild(card('s7','Scale-readiness · 4-condition closed loop',cond));
 
-  // ---- monitor loss ----
-  const ml=document.createElement('div'); const mlc=mkcanvas(ml,560,180);
-  lineChart(mlc,[{pts:imp.curve.map(p=>[p.step,p.monitor_loss]),color:C.good,label:'monitor'}],{ylabel:'monitor loss'});
-  root.appendChild(card('span6','Training · monitor loss',ml));
+  // Headline ablation: 4 modes ppl curves
+  const ab=document.createElement('div'); const abc=mkc(ab,560,250);
+  lines(abc,modes.map(m=>({pts:d.results[m].curve.map(p=>[p.step,p.val_ppl]),color:mc[m],label:m})),{hline:d.bigram_ppl,ylabel:'val ppl'});
+  ab.appendChild(legend(modes.map(m=>[m,mc[m]]).concat([['bigram baseline',C.mut]])));
+  r.appendChild(card('s7','Headline ablation · val perplexity (4 budget policies)',ab));
 
-  // ---- expert importance heatmap ----
-  const hm=document.createElement('div'); const hmc=mkcanvas(hm,560,Math.max(140,d.config.n_experts*14+30));
-  heatmap(hmc,imp.unit_hist);
-  hm.appendChild(legend([['low importance','#16324a'],['high importance',C.acc]]));
-  root.appendChild(card('span6','Expert importance (EMA) over time',hm));
+  // Experiment design (7 slots)
+  const dd=document.createElement('div'); dd.className='dl';
+  for(const [k,v] of Object.entries(d.design)) dd.innerHTML+=`<b>${k}</b><span class="muted">${v}</span>`;
+  r.appendChild(card('s5','Experiment design · 7 slots',dd));
 
-  // ---- selection frequency ----
-  const sf=document.createElement('div'); const sfc=mkcanvas(sf,560,Math.max(140,d.config.n_experts*14+30));
-  const freq=Object.entries(imp.sel_hist).map(([k,v])=>[k,v.reduce((a,b)=>a+b,0)/Math.max(1,v.length)]);
-  barChart(sfc,freq,C.acc2);
-  root.appendChild(card('span6','Expert update-selection frequency',sf));
+  // train vs val ppl (overfit check) for importance
+  const tv=document.createElement('div'); const tvc=mkc(tv,560,180);
+  lines(tvc,[{pts:d.results.importance.curve.map(p=>[p.step,p.val_ppl]),color:C.acc,label:'val'},
+             {pts:d.results.importance.curve.map(p=>[p.step,p.train_ppl]),color:C.good,label:'train'}],{ylabel:'ppl'});
+  tv.appendChild(legend([['val',C.acc],['train',C.good]])); r.appendChild(card('s6','Model quality · train vs val ppl (importance)',tv));
 
-  // ---- anomalies / debug ----
-  const an=document.createElement('div');
-  const an1=imp.anomalies||[], an2=rnd.anomalies||[];
-  if(an1.length+an2.length===0){ an.innerHTML='<div class="muted">No NaN/Inf/divergence anomalies detected. ✓</div>'; }
-  else{
-    let t='<table><tr><th>mode</th><th>step</th><th>kind</th><th>detail</th></tr>';
-    an1.forEach(a=>t+=`<tr class="anom"><td>importance</td><td>${a.step}</td><td>${a.kind}</td><td>${a.detail||''}</td></tr>`);
-    an2.forEach(a=>t+=`<tr class="anom"><td>random</td><td>${a.step}</td><td>${a.kind}</td><td>${a.detail||''}</td></tr>`);
-    an.innerHTML=t+'</table>';
-  }
-  root.appendChild(card('span12','Health · anomalies (NaN / Inf / divergence)',an));
+  // expert importance heatmap
+  const hm=document.createElement('div'); const hmc=mkc(hm,560,Math.max(150,d.config.n_experts*13+24));
+  heat(hmc,d.results.importance.unit_hist); hm.appendChild(legend([['low s_ema','#16324a'],['high s_ema',C.acc]]));
+  r.appendChild(card('s6','Controller · expert importance s_ema over time',hm));
+
+  // selection frequency
+  const sf=document.createElement('div'); const sfc=mkc(sf,560,Math.max(150,d.config.n_experts*13+24));
+  bars(sfc,Object.entries(d.results.importance.sel_hist).map(([k,v])=>[k,v.reduce((a,b)=>a+b,0)/Math.max(1,v.length)]),C.acc2);
+  r.appendChild(card('s6','Controller · expert update-selection frequency',sf));
+
+  // run history table
+  const ht=document.createElement('div');
+  let t='<table><tr><th>#</th><th>time</th><th>imp</th><th>rnd</th><th>uni</th><th>ftk</th><th>gap</th><th>bigram</th><th>headline</th><th>stab</th><th>gates</th></tr>';
+  history.slice().reverse().forEach(h=>t+=`<tr><td>${h.run}</td><td class="muted">${h.ts}</td><td>${h.importance_ppl}</td><td>${h.random_ppl}</td><td>${h.uniform_ppl}</td><td>${h.fixed_topk_ppl}</td><td style="color:${h.gap>0?C.good:C.bad}">${h.gap}</td><td class="muted">${h.bigram}</td><td>${h.headline_pass?'<span style=color:'+C.good+'>PASS</span>':'<span style=color:'+C.bad+'>FAIL</span>'}</td><td>${h.score_stability}</td><td>${h.gates}</td></tr>`);
+  ht.innerHTML=t+'</table>'; r.appendChild(card('s7','Training history · all runs',ht));
+
+  // trends across runs
+  const tr=document.createElement('div'); const trc=mkc(tr,560,200);
+  if(history.length>=2) lines(trc,[
+    {pts:history.map(h=>[h.run,h.importance_ppl]),color:C.acc,label:'importance ppl'},
+    {pts:history.map(h=>[h.run,h.random_ppl]),color:C.acc2,label:'random ppl'},
+    {pts:history.map(h=>[h.run,h.gap]),color:C.good,label:'gap'}],{ylabel:'ppl / gap'});
+  else trc.getContext('2d').fillStyle=C.mut,trc.getContext('2d').fillText('need ≥2 runs for trend',60,90);
+  tr.appendChild(legend([['importance ppl',C.acc],['random ppl',C.acc2],['gap (want >0)',C.good]]));
+  r.appendChild(card('s5','Trends across runs',tr));
+
+  // anomalies
+  const an=document.createElement('div'); const a1=d.results.importance.anomalies||[];
+  an.innerHTML=a1.length? '<table><tr><th>step</th><th>kind</th><th>detail</th></tr>'+a1.map(a=>`<tr style="color:${C.warn}"><td>${a.step}</td><td>${a.kind}</td><td>${a.detail||''}</td></tr>`).join('')+'</table>' : '<div class="muted">No NaN/Inf/divergence anomalies. ✓</div>';
+  r.appendChild(card('s12','Health · anomalies',an));
 }
-
-// ---------- helpers ----------
-function card(span,title,body){const c=document.createElement('div');c.className='card '+span;c.innerHTML=`<h2>${title}</h2>`;c.appendChild(body);return c;}
-function kpiStrip(items){const w=document.createElement('div');w.className='kpi';for(const [l,v,cls] of items){const k=document.createElement('div');k.className='k';k.innerHTML=`<div class="v ${cls==='good'?'pass':cls==='bad'?'fail':''}" ${cls==='mut'?'style=color:var(--mut)':''} ${cls==='warn'?'style=color:var(--warn)':''}>${v}</div><div class="l">${l}</div>`;w.appendChild(k);}return w;}
+// helpers
+function card(s,t,b){const c=document.createElement('div');c.className='card '+s;c.innerHTML=`<h2>${t}</h2>`;c.appendChild(b);return c;}
+function kpi(items){const w=document.createElement('div');w.className='kpi';for(const[l,v,cls]of items){const k=document.createElement('div');k.className='k';const col=cls==='good'?C.good:cls==='bad'?C.bad:cls==='warn'?C.warn:cls==='mut'?C.mut:'#e7edf5';k.innerHTML=`<div class="v" style="color:${col}">${v}</div><div class="l">${l}</div>`;w.appendChild(k);}return w;}
 function legend(items){const l=document.createElement('div');l.className='legend';l.innerHTML=items.map(([t,c])=>`<span><i style="background:${c}"></i>${t}</span>`).join('');return l;}
-function mkcanvas(parent,w,h){const c=document.createElement('canvas');const dpr=devicePixelRatio||1;c.width=w*dpr;c.height=h*dpr;c.style.height=h+'px';const ctx=c.getContext('2d');ctx.scale(dpr,dpr);c._W=w;c._H=h;parent.appendChild(c);return c;}
-
-function lineChart(cv,series,opt={}){
-  const ctx=cv.getContext('2d'),W=cv._W,H=cv._H,pad={l:46,r:12,t:12,b:26};
+function mkc(p,w,h){const c=document.createElement('canvas');const dpr=devicePixelRatio||1;c.width=w*dpr;c.height=h*dpr;c.style.height=h+'px';c.getContext('2d').scale(dpr,dpr);c._W=w;c._H=h;p.appendChild(c);return c;}
+function lines(cv,series,opt={}){const ctx=cv.getContext('2d'),W=cv._W,H=cv._H,pad={l:46,r:12,t:12,b:24};
   const xs=series.flatMap(s=>s.pts.map(p=>p[0])),ys=series.flatMap(s=>s.pts.map(p=>p[1]));
-  let ymin=Math.min(...ys),ymax=Math.max(...ys); if(opt.hline){ymax=Math.max(ymax,opt.hline);}
-  const xmin=Math.min(...xs),xmax=Math.max(...xs); const yr=(ymax-ymin)||1;
-  ymin-=yr*0.08; ymax+=yr*0.08;
-  const X=x=>pad.l+(W-pad.l-pad.r)*(x-xmin)/((xmax-xmin)||1);
-  const Y=y=>H-pad.b-(H-pad.t-pad.b)*(y-ymin)/((ymax-ymin)||1);
-  ctx.strokeStyle=C.line;ctx.fillStyle=C.mut;ctx.font='11px ui-monospace';
-  for(let i=0;i<=4;i++){const v=ymin+(ymax-ymin)*i/4;const y=Y(v);ctx.globalAlpha=.5;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();ctx.globalAlpha=1;ctx.fillText(v.toFixed(1),4,y+3);}
+  let ymin=Math.min(...ys),ymax=Math.max(...ys);if(opt.hline!=null)ymax=Math.max(ymax,opt.hline),ymin=Math.min(ymin,opt.hline);
+  const xmin=Math.min(...xs),xmax=Math.max(...xs),yr=(ymax-ymin)||1;ymin-=yr*.08;ymax+=yr*.08;
+  const X=x=>pad.l+(W-pad.l-pad.r)*(x-xmin)/((xmax-xmin)||1),Y=y=>H-pad.b-(H-pad.t-pad.b)*(y-ymin)/((ymax-ymin)||1);
+  ctx.font='10px ui-monospace';for(let i=0;i<=4;i++){const v=ymin+(ymax-ymin)*i/4,y=Y(v);ctx.strokeStyle=C.line;ctx.globalAlpha=.5;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();ctx.globalAlpha=1;ctx.fillStyle=C.mut;ctx.fillText(v.toFixed(1),4,y+3);}
   if(opt.hline!=null){const y=Y(opt.hline);ctx.strokeStyle=C.mut;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();ctx.setLineDash([]);}
-  for(const s of series){ctx.strokeStyle=s.color;ctx.lineWidth=2;ctx.beginPath();s.pts.forEach((p,i)=>{const x=X(p[0]),y=Y(p[1]);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();
-    ctx.fillStyle=s.color;s.pts.forEach(p=>{ctx.beginPath();ctx.arc(X(p[0]),Y(p[1]),2.2,0,7);ctx.fill();});}
-}
-function barChart(cv,items,color){
-  const ctx=cv.getContext('2d'),W=cv._W,H=cv._H,pad={l:46,r:12,t:8,b:8};
-  const n=items.length,bh=(H-pad.t-pad.b)/n,max=Math.max(...items.map(i=>i[1]),1e-6);
-  ctx.font='11px ui-monospace';
-  items.forEach((it,i)=>{const y=pad.t+i*bh;const w=(W-pad.l-pad.r)*it[1]/max;
-    ctx.fillStyle=color;ctx.fillRect(pad.l,y+2,w,bh-4);
-    ctx.fillStyle=C.mut;ctx.fillText(it[0],4,y+bh/2+3);
-    ctx.fillStyle='#cdd7e3';ctx.fillText(it[1].toFixed(2),pad.l+w+4,y+bh/2+3);});
-}
-function heatmap(cv,hist){
-  const ctx=cv.getContext('2d'),W=cv._W,H=cv._H,pad={l:46,r:12,t:8,b:8};
-  const keys=Object.keys(hist),rows=keys.length,cols=Math.max(1,hist[keys[0]].length);
-  const all=keys.flatMap(k=>hist[k]); let mn=Math.min(...all),mx=Math.max(...all);const rg=(mx-mn)||1;
-  const cw=(W-pad.l-pad.r)/cols,rh=(H-pad.t-pad.b)/rows;
-  ctx.font='10px ui-monospace';
-  keys.forEach((k,r)=>{hist[k].forEach((v,c)=>{const t=(v-mn)/rg;
-    const col=`rgb(${22+(93-22)*t|0},${50+(176-50)*t|0},${74+(255-74)*t|0})`;
-    ctx.fillStyle=col;ctx.fillRect(pad.l+c*cw,pad.t+r*rh,cw+.5,rh+.5);});
-    ctx.fillStyle=C.mut;ctx.fillText(k,4,pad.t+r*rh+rh/2+3);});
-}
-load();
+  for(const s of series){ctx.strokeStyle=s.color;ctx.lineWidth=2;ctx.beginPath();s.pts.forEach((p,i)=>{const x=X(p[0]),y=Y(p[1]);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();}}
+function bars(cv,items,color){const ctx=cv.getContext('2d'),W=cv._W,H=cv._H,pad={l:42,r:14,t:6,b:6},n=items.length,bh=(H-pad.t-pad.b)/n,mx=Math.max(...items.map(i=>i[1]),1e-6);ctx.font='10px ui-monospace';
+  items.forEach((it,i)=>{const y=pad.t+i*bh,w=(W-pad.l-pad.r)*it[1]/mx;ctx.fillStyle=color;ctx.fillRect(pad.l,y+2,w,bh-3);ctx.fillStyle=C.mut;ctx.fillText(it[0],4,y+bh/2+3);ctx.fillStyle='#cdd7e3';ctx.fillText(it[1].toFixed(2),pad.l+w+4,y+bh/2+3);});}
+function heat(cv,hist){const ctx=cv.getContext('2d'),W=cv._W,H=cv._H,pad={l:42,r:12,t:6,b:6},keys=Object.keys(hist),rows=keys.length,cols=Math.max(1,hist[keys[0]].length);
+  const all=keys.flatMap(k=>hist[k]);let mn=Math.min(...all),mx=Math.max(...all),rg=(mx-mn)||1;const cw=(W-pad.l-pad.r)/cols,rh=(H-pad.t-pad.b)/rows;ctx.font='9px ui-monospace';
+  keys.forEach((k,rI)=>{hist[k].forEach((v,c)=>{const t=(v-mn)/rg;ctx.fillStyle=`rgb(${22+(93-22)*t|0},${50+(176-50)*t|0},${74+(255-74)*t|0})`;ctx.fillRect(pad.l+c*cw,pad.t+rI*rh,cw+.6,rh+.6);});ctx.fillStyle=C.mut;ctx.fillText(k,4,pad.t+rI*rh+rh/2+3);});}
+boot();
 </script>

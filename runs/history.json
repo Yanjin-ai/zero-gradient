@@ -1,0 +1,36 @@
+[
+  {
+    "ts": "2026-06-25 15:34:31",
+    "run": 1,
+    "mode_config": "nano",
+    "importance_ppl": 7.373,
+    "random_ppl": 7.357,
+    "uniform_ppl": 7.624,
+    "fixed_topk_ppl": 7.493,
+    "gap": -0.016,
+    "unigram": 23.956,
+    "bigram": 4.471,
+    "acc": 0.373,
+    "gates": "7/9",
+    "headline_pass": false,
+    "score_stability": 0.4512,
+    "wall_s": 2.14
+  },
+  {
+    "ts": "2026-06-25 15:34:43",
+    "run": 2,
+    "mode_config": "nano",
+    "importance_ppl": 7.373,
+    "random_ppl": 7.357,
+    "uniform_ppl": 7.624,
+    "fixed_topk_ppl": 7.493,
+    "gap": -0.016,
+    "unigram": 23.956,
+    "bigram": 4.471,
+    "acc": 0.373,
+    "gates": "7/9",
+    "headline_pass": false,
+    "score_stability": 0.4512,
+    "wall_s": 2.13
+  }
+]
