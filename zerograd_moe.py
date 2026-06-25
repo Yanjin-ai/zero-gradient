@@ -51,19 +51,34 @@ class MoECfg:
     capacity_factor: float = 2.0     # per-expert per-batch capacity = factor * B*k/N (load mgmt, anti-collapse)
     eval_every: int = 50
     eval_batches: int = 16
+    seed: int = 0                    # run seed (varies init + batch order -> across-run variance)
+    # ---- Stage 4: controller v3 (budget allocation over touched experts) ----
+    routing_mode: str = "off"        # off | uniform | random | fixed_topk | importance
+    k_update: int = 8                # update budget: how many touched experts get FULL update per step
+    soft_floor: float = 0.15         # non-selected experts get this fraction of lr
+    ema_rho: float = 0.9
+    lam_cov: float = 1.0             # coverage (deficit = routed-traffic minus update-count)
+    lam_lev: float = 0.8             # leverage (||dW||)
+    lam_learn: float = 0.8           # learnability (local-error drop)
+    lam_act: float = 0.2
+    lam_cost: float = 0.2
 
 
 class ZeroGradMoE:
     def __init__(self, cfg: MoECfg, V: int):
         self.cfg = cfg; self.V = V; d = cfg.d_model
-        self.E = init_(V, d, scale=0.02); self.pos = init_(cfg.seq_len, d, scale=0.02)
-        self.Wq = init_(d, d, scale=1/math.sqrt(d)); self.Wk = init_(d, d, scale=1/math.sqrt(d))  # frozen
-        self.P = init_(d, cfg.d_key, scale=1/math.sqrt(d))                                          # frozen routing proj
-        self.C = init_(cfg.n_experts, cfg.d_key, scale=1.0)                                         # prototypes (EMA)
+        sd = SEED + cfg.seed*100003; ctr = [0]
+        def w(*shape, scale):
+            ctr[0] += 1; g = torch.Generator().manual_seed(sd + ctr[0])
+            return (torch.randn(*shape, generator=g, dtype=DTYPE, device=DEVICE) * scale).contiguous()
+        self.E = w(V, d, scale=0.02); self.pos = w(cfg.seq_len, d, scale=0.02)
+        self.Wq = w(d, d, scale=1/math.sqrt(d)); self.Wk = w(d, d, scale=1/math.sqrt(d))  # frozen
+        self.P = w(d, cfg.d_key, scale=1/math.sqrt(d))                                      # frozen routing proj
+        self.C = w(cfg.n_experts, cfg.d_key, scale=1.0)                                     # prototypes (EMA)
         self.C = self.C / (self.C.norm(dim=-1, keepdim=True) + 1e-6)
-        self.We = [init_(d, d, scale=0.05) for _ in range(cfg.n_experts)]      # experts = the FFN
+        self.We = [w(d, d, scale=0.05) for _ in range(cfg.n_experts)]          # experts = the FFN
         self.be = [torch.zeros(d, dtype=DTYPE, device=DEVICE) for _ in range(cfg.n_experts)]
-        self.Hf = init_(d, V, scale=1/math.sqrt(d)); self.bf = torch.zeros(V, dtype=DTYPE, device=DEVICE)
+        self.Hf = w(d, V, scale=1/math.sqrt(d)); self.bf = torch.zeros(V, dtype=DTYPE, device=DEVICE)
         self.num_params = V*d + cfg.seq_len*d + 2*d*d + d*cfg.d_key + cfg.n_experts*(d*d+d) + d*V
 
     def context(self, x):
@@ -110,6 +125,46 @@ class ZeroGradMoE:
     def logits(self, hm): return hm @ self.Hf + self.bf
 
 
+class Ctrl:
+    """Stage-4 controller v3: allocates the per-step UPDATE budget over touched experts."""
+    def __init__(self, cfg: MoECfg):
+        n = cfg.n_experts; self.cfg = cfg
+        self.m_err = torch.full((n,), float("nan")); self.m_lev = torch.zeros(n); self.m_act = torch.zeros(n)
+        self.learn = torch.zeros(n); self.usage = torch.zeros(n); self.upd = torch.zeros(n); self.s_ema = torch.zeros(n)
+    @staticmethod
+    def _z(x, mask):
+        v = x[mask]
+        if v.numel() < 2 or float(v.std()) < 1e-6: return torch.zeros_like(x)
+        return ((x - v.mean()) / (v.std() + 1e-6)).clamp(-4, 4)
+    def observe(self, err, lev, act, touched):
+        b = self.cfg.ema_rho
+        for e, val in err.items():
+            prev = self.m_err[e]; self.m_err[e] = val if torch.isnan(prev) else b*float(prev)+(1-b)*val
+            if not torch.isnan(prev): self.learn[e] = max(0.0, float(prev)-float(self.m_err[e]))
+        for e, val in lev.items(): self.m_lev[e] = b*self.m_lev[e]+(1-b)*val
+        for e, val in act.items(): self.m_act[e] = b*self.m_act[e]+(1-b)*val
+        self.usage = 0.95*self.usage + 0.05*touched
+    def select(self, cand, step):
+        c = self.cfg; mask = torch.zeros(c.n_experts, dtype=torch.bool); mask[cand] = True
+        deficit = self.usage - self.upd; cost = torch.ones(c.n_experts)
+        s = (c.lam_cov*self._z(deficit, mask) + c.lam_lev*self._z(self.m_lev, mask)
+             + c.lam_learn*self._z(self.learn, mask) + c.lam_act*self._z(self.m_act, mask)
+             - c.lam_cost*self._z(cost, mask))
+        self.s_ema = c.ema_rho*self.s_ema + (1-c.ema_rho)*s
+        k = min(c.k_update, int(mask.sum()))
+        if c.routing_mode in ("off", "uniform"): sel = set(cand.tolist())
+        elif c.routing_mode == "random":
+            g = torch.Generator().manual_seed(SEED + c.seed*131 + step)
+            sel = set(cand[torch.randperm(cand.numel(), generator=g)[:k]].tolist())
+        elif c.routing_mode == "fixed_topk": sel = set(cand[:k].tolist())
+        else:
+            order = torch.argsort(self.s_ema[cand], descending=True); sel = set(cand[order[:k]].tolist())
+        selm = torch.zeros(c.n_experts)
+        if sel: selm[list(sel)] = 1.0
+        self.upd = 0.95*self.upd + 0.05*selm
+        return sel
+
+
 def topic_report(model: ZeroGradMoE, data, n_topics, batches=24):
     """Expert x topic assignment matrix + purity + routing entropy (on val)."""
     cfg = model.cfg; M = torch.zeros(cfg.n_experts, n_topics)
@@ -146,10 +201,11 @@ def train(cfg: MoECfg, data):
     _, _, rr0 = model.context(Xtr[:cfg.batch_size]); k0 = model.key(rr0)
     g = torch.Generator().manual_seed(SEED); idx = torch.randperm(k0.shape[0], generator=g)[:cfg.n_experts]
     model.C = k0[idx].clone()
+    ctrl = Ctrl(cfg)
     t0 = time.time(); curve = []; ent_curve = []; drift_curve = []; anomalies = []
     expert_loss_ema = torch.zeros(cfg.n_experts); expert_act_ema = torch.zeros(cfg.n_experts)
     for step in range(cfg.steps):
-        gg = torch.Generator().manual_seed(SEED+1000+step); ix = torch.randint(0, len(Xtr), (cfg.batch_size,), generator=gg)
+        gg = torch.Generator().manual_seed(SEED+1000+step+cfg.seed*9176); ix = torch.randint(0, len(Xtr), (cfg.batch_size,), generator=gg)
         xb, yb = Xtr[ix], Ytr[ix]; B = xb.shape[0]
         h, att, rr = model.context(xb); topk, kk = model.route(rr)
         # forward MoE
@@ -165,13 +221,22 @@ def train(cfg: MoECfg, data):
         p = torch.softmax(lg, -1); p[torch.arange(B), yb] -= 1.0; p /= B
         model.Hf -= cfg.lr_head * (hm.T @ p); model.bf -= cfg.lr_head * p.sum(0)
         dh = p @ model.Hf.T
-        # experts: ALL routed updated EQUALLY (controller OFF)
+        # experts: controller v3 allocates the UPDATE budget over touched experts (Stage 4).
+        # mode "off" = Stage-3 behavior (all updated equally). Signals computed for ALL touched.
+        cand = torch.tensor(sorted(cache.keys())); err, lev, act = {}, {}, {}; delta = {}
+        touched = torch.zeros(cfg.n_experts)
         for e, (inp, z, m, he) in cache.items():
-            dz = (dh[m] / cfg.k_route) * (z > 0).to(DTYPE)
-            model.We[e] -= cfg.lr_expert * (inp.T @ dz); model.be[e] -= cfg.lr_expert * dz.sum(0)
-            mm = int(m.sum())
-            expert_loss_ema[e] = 0.9*expert_loss_ema[e] + 0.1*float((he @ model.Hf + model.bf).softmax(-1).max(-1).values.mean())
-            expert_act_ema[e] = 0.9*expert_act_ema[e] + 0.1*float(he.norm()/math.sqrt(max(1, mm)))
+            mm = int(m.sum()); dz = (dh[m] / cfg.k_route) * (z > 0).to(DTYPE)
+            dWe = inp.T @ dz; dbe = dz.sum(0); delta[e] = (dWe, dbe)
+            comp = (he @ model.Hf + model.bf); clp = comp - comp.logsumexp(-1, keepdim=True)
+            err[e] = float(-clp[torch.arange(mm), yb[m]].mean()); lev[e] = float(dWe.norm())
+            act[e] = float(he.norm()/math.sqrt(max(1, mm))); touched[e] = 1.0
+            expert_loss_ema[e] = 0.9*expert_loss_ema[e] + 0.1*err[e]
+            expert_act_ema[e] = 0.9*expert_act_ema[e] + 0.1*act[e]
+        ctrl.observe(err, lev, act, touched); sel = ctrl.select(cand, step)
+        for e, (dWe, dbe) in delta.items():
+            scale = cfg.lr_expert if (cfg.routing_mode in ("off", "uniform") or e in sel) else cfg.lr_expert*cfg.soft_floor
+            model.We[e] -= scale * dWe; model.be[e] -= scale * dbe
         # embedding update (approx local credit assignment through frozen attention)
         w = att.unsqueeze(-1) * dh.unsqueeze(1)
         model.E.index_add_(0, xb.reshape(-1), (-cfg.lr_embed*w).reshape(-1, cfg.d_model))
@@ -225,5 +290,36 @@ def run():
     return out
 
 
+def run4(seeds=5, k_bar=4, k_grid=(2, 3, 4, 6, 10)):
+    """Stage 4: controller v3 ablation on the specialized MoE (variance over seeds)."""
+    data = build_corpus(DataCfg()); modes = ["uniform", "random", "fixed_topk", "importance"]
+    bar = {m: [] for m in modes}
+    for sd in range(seeds):
+        for m in modes:
+            bar[m].append(train(MoECfg(routing_mode=m, k_update=k_bar, steps=1000, eval_every=1000, seed=sd), data)["final"]["val_ppl"])
+    sweep = []
+    for k in k_grid:
+        ri = [train(MoECfg(routing_mode="importance", k_update=k, steps=1000, eval_every=1000, seed=sd), data)["final"]["val_ppl"] for sd in range(seeds)]
+        rr = [train(MoECfg(routing_mode="random", k_update=k, steps=1000, eval_every=1000, seed=sd), data)["final"]["val_ppl"] for sd in range(seeds)]
+        g = np.array(rr) - np.array(ri)
+        sweep.append(dict(k=k, imp=round(float(np.mean(ri)), 3), rnd=round(float(np.mean(rr)), 3),
+                          gap=round(float(g.mean()), 3), gap_std=round(float(g.std()), 3), pos=int((g > 0).sum()), n=seeds))
+    gp = np.array(bar["random"]) - np.array(bar["importance"])
+    out = dict(stage="A-stage4", seeds=seeds, k_bar=k_bar, n_experts=MoECfg().n_experts, bigram=round(data["bigram_ppl"], 3),
+               bar={m: dict(mean=round(float(np.mean(bar[m])), 3), std=round(float(np.std(bar[m])), 3),
+                            vals=[round(x, 3) for x in bar[m]]) for m in modes},
+               headline_gap=round(float(gp.mean()), 3), headline_gap_std=round(float(gp.std()), 3),
+               headline_pos=int((gp > 0).sum()), sweep=sweep, ts=time.strftime("%Y-%m-%d %H:%M:%S"))
+    (HERE/"runs").mkdir(exist_ok=True); (HERE/"runs"/"stage4.json").write_text(json.dumps(out, indent=2))
+    (HERE/"dashboard").mkdir(exist_ok=True); (HERE/"dashboard"/"data4.js").write_text("window.STAGE_4="+json.dumps(out)+";")
+    print("\n==== STAGE 4 (controller v3 on specialized MoE) ====")
+    for m in modes: print(f"  {m:11s} ppl = {out['bar'][m]['mean']:.3f} ± {out['bar'][m]['std']:.3f}")
+    print(f"  headline gap (random - importance) @k={k_bar}: +{out['headline_gap']:.3f} ± {out['headline_gap_std']:.3f}  ({out['headline_pos']}/{seeds} seeds positive)")
+    print("  gap vs budget (tighter budget -> bigger controller advantage, = the 4B regime):")
+    for s in sweep: print(f"    k={s['k']:2d}: gap=+{s['gap']:.3f} ± {s['gap_std']:.3f}  ({s['pos']}/{s['n']})")
+    return out
+
+
 if __name__ == "__main__":
-    run()
+    import sys
+    run4() if (len(sys.argv) > 1 and sys.argv[1] == "stage4") else run()

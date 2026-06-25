@@ -59,5 +59,16 @@
 
 ---
 
-## 下一步：Stage 4（controller v3 接入特化的 MoE）
-在已特化的专家上打开 controller v3，做 importance vs random/uniform 消融——这次有专家特化撑着，预期 importance>random 能决定性成立。
+## E10 · 阶段 A / Stage 4：controller v3 接入特化 MoE（importance vs random/uniform 消融）
+- **目标**：模型+局部规则不动，只引入 controller v3（在被路由专家里按 score 选 top-k_update 做全量更新，其余 soft_floor）；多 seed 测 importance(D) 是否**稳定**优于 random(B)。
+- **模式**：uniform（全更新，预算无限上界）/ random（随机选 k）/ fixed_topk / importance（v3 score 选 k）。`zerograd_moe.py stage4`，仪表盘 `dashboard/stage4.html`。
+- **结果（5 seed，k_update=6）**：uniform 6.48±0.34 < importance 6.99±0.51 ≈ random 7.03±0.49 < fixed_topk 7.44。**paired gap(random−importance) = +0.042 ± 0.027，4/5 seed 为正**。
+- **预算扫描（关键）**：gap 随预算收紧**单调放大**——k=10:+0.017 / k=6:+0.042 / k=4:+0.057 / k=3:+0.062 / **k=2:+0.079**（每档 4/5 seed 正）。
+- **判决**：✅ **importance > random 稳定成立**（与 B 实验的"importance≈或<random"形成鲜明对比），且**预算越紧优势越大 = 正中 4B regime**（N 巨大、k_update/N→0）。margin 仍小（≤0.08 ppl）但**方向一致、机理清晰**。**nano 级整套"结构感知训练资源分配"想法第一轮闭环完成。**
+- **对比总览**：B（无特化）gap −0.04~−0.18 → Stage 4（特化）gap +0.02~+0.08。**特化是 controller 价值的前提，已被双向验证。**
+
+---
+
+## nano 闭环完成 → 下一步：scale 设计
+dense+local 规则 ✓ → B 实验定因 ✓ → Stage 3 特化 ✓ → Stage 4 importance>random ✓。
+下一步谈 scale（更大 MoE / 4B surrogate），保持结构比值（深度/宽度、稀疏专家/主干预算、controller 控制比例、state-cache/参数比），并在更紧预算下复测 gap 是否保持/放大。
