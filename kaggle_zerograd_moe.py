@@ -81,6 +81,10 @@ KAGGLE = Config(name="kaggle-4B", d_model=1024, vocab=32000, seq_len=64, n_layer
                 k_route=2, k_update=4, dtype="float16", steps=10**9, time_limit_s=3*3600-300,
                 eval_every=200, param_gate=4_000_000_000)
 
+if os.environ.get("ZG_SMOKE") == "1":                          # smoke: 4B resident, ~4 min, measure throughput/mem
+    KAGGLE.steps = 150; KAGGLE.time_limit_s = 240; KAGGLE.eval_every = 25
+elif os.environ.get("ZG_RUN_MIN"):                             # real run with a wall-clock cap (minutes)
+    KAGGLE.time_limit_s = int(os.environ["ZG_RUN_MIN"])*60; KAGGLE.eval_every = 100
 CONFIG = KAGGLE if (ON_KAGGLE and CUDA) else Config()          # auto-pick; flip manually if needed
 DEVICE = torch.device("cuda:0" if CUDA else "cpu")
 DT = CONFIG.td
@@ -100,9 +104,10 @@ def find_wikitext():
     return None
 
 def build_data(cfg: Config):
-    src = find_wikitext()
+    src = find_wikitext(); test_text = None
     if src is not None:
         text = src.read_text(encoding="utf-8", errors="ignore")[:8_000_000]; corpus = "wikitext-103"
+        tp = src.parent/"wiki.test.tokens"; test_text = tp.read_text(encoding="utf-8", errors="ignore") if tp.exists() else None
     else:                                                      # local fallback: structured synthetic
         rng = random.Random(SEED); subj=["robot","cat","river","engine","child","wizard","planet","farmer"]
         verb=["builds","watches","carries","breaks","finds","guards","paints","feeds"]
@@ -125,6 +130,12 @@ def build_data(cfg: Config):
              Xval=X[:nval].to(DEVICE), Yval=Y[:nval].to(DEVICE))
     cnt = torch.bincount(d["Ytr"], minlength=len(vocab)).float()+1e-6; p = cnt/cnt.sum()
     d["unigram_ppl"] = float(torch.exp(-(p[d["Yval"]].log()).mean()))
+    if test_text is not None:                                  # official WikiText-103 test split
+        tt = _tok(test_text); tids = torch.tensor([stoi.get(w, 1) for w in tt], dtype=torch.long)
+        Xt, Yt = [], []
+        for i in range(0, len(tids)-cfg.seq_len-1, cfg.seq_len):
+            Xt.append(tids[i:i+cfg.seq_len]); Yt.append(tids[i+cfg.seq_len])
+        if Xt: d["Xtest"] = torch.stack(Xt)[:3000].to(DEVICE); d["Ytest"] = torch.stack(Yt)[:3000].to(DEVICE)
     return d
 
 
@@ -298,6 +309,10 @@ def run():
         m2 = ZeroGradMoE(cfg, len(data["vocab"])); r2 = train(m2, data, cfg)
         det_ok = abs(r2["final_ppl"]-res["final_ppl"]) < 1e-6
     else: det_ok = True
+    wt_ppl = None
+    if "Xtest" in data:                                        # official WikiText-103 test perplexity (offline gate)
+        wt_ppl = round(evaluate(model, data["Xtest"], data["Ytest"], cfg, batches=10**9), 3)
+        print(f"  WikiText-103 TEST perplexity = {wt_ppl}")
     oom = bp_oom_demo(cfg)
     gates = {
         "resident params >= gate": cfg.param_count() >= cfg.param_gate,
@@ -310,6 +325,7 @@ def run():
     summary = dict(config=asdict(cfg), corpus=data["corpus"], param_count=cfg.param_count(),
                    param_gigaparams=round(cfg.param_count()/1e9, 3), per_step_updated_experts=cfg.k_update*cfg.n_layers,
                    update_fraction=round(cfg.k_update/cfg.n_experts, 4), unigram_ppl=round(data["unigram_ppl"], 2),
+                   wikitext103_test_ppl=wt_ppl,
                    train=res, bp_oom=oom, gates=gates, gates_passed=int(sum(gates.values())), gates_total=len(gates),
                    ts=time.strftime("%Y-%m-%d %H:%M:%S"))
     (OUT/"run_summary.json").write_text(json.dumps(summary, indent=2, default=float))

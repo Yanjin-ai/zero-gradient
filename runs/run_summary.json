@@ -24,6 +24,7 @@
   "per_step_updated_experts": 8,
   "update_fraction": 0.0833,
   "unigram_ppl": 20.13,
+  "wikitext103_test_ppl": null,
   "train": {
     "curve": [
       {
@@ -31,53 +32,53 @@
         "monitor": 3.5852,
         "val_ppl": 35.709,
         "t": 0.1,
-        "tok_s": 13637
+        "tok_s": 13398
       },
       {
         "step": 100,
         "monitor": 3.0051,
         "val_ppl": 15.921,
-        "t": 0.6,
-        "tok_s": 183350
+        "t": 0.7,
+        "tok_s": 151669
       },
       {
         "step": 200,
         "monitor": 2.1739,
         "val_ppl": 11.006,
-        "t": 1.0,
-        "tok_s": 199244
+        "t": 1.2,
+        "tok_s": 177783
       },
       {
         "step": 300,
         "monitor": 2.196,
         "val_ppl": 8.644,
-        "t": 1.5,
-        "tok_s": 206431
+        "t": 1.7,
+        "tok_s": 186753
       },
       {
         "step": 400,
         "monitor": 2.2495,
         "val_ppl": 7.279,
-        "t": 2.0,
-        "tok_s": 210521
+        "t": 2.1,
+        "tok_s": 193688
       },
       {
         "step": 500,
         "monitor": 2.3892,
         "val_ppl": 6.509,
-        "t": 2.4,
-        "tok_s": 212780
+        "t": 2.6,
+        "tok_s": 199190
       },
       {
         "step": 599,
         "monitor": 2.0039,
         "val_ppl": 6.026,
-        "t": 2.9,
-        "tok_s": 214354
+        "t": 3.1,
+        "tok_s": 200681
       }
     ],
     "steps": 600,
-    "wall_s": 2.9,
+    "wall_s": 3.1,
     "peak_mem_mb": 12.1,
     "final_ppl": 6.026,
     "autograd_used": false
@@ -98,5 +99,5 @@
   },
   "gates_passed": 5,
   "gates_total": 6,
-  "ts": "2026-06-26 23:25:58"
+  "ts": "2026-06-26 23:56:46"
 }
