@@ -14,36 +14,36 @@
       "gap_std": 0.036,
       "pos": 3,
       "n": 4,
-      "wall_s": 2.92
+      "wall_s": 2.98
     },
     {
       "name": "small (2L, d128, 32e)",
       "params": 1108608,
-      "ppl": 7.024,
+      "ppl": 7.017,
       "purity_l0": 0.837,
       "purity_mean": 0.837,
       "entropy_l0": 3.372,
       "max_entropy": 3.466,
-      "gap": -0.014,
-      "gap_std": 0.021,
-      "pos": 1,
+      "gap": -0.007,
+      "gap_std": 0.004,
+      "pos": 0,
       "n": 4,
-      "wall_s": 8.9
+      "wall_s": 9.2
     },
     {
       "name": "small (3L, d128, 64e)",
       "params": 3227136,
-      "ppl": 6.917,
+      "ppl": 6.774,
       "purity_l0": 0.944,
       "purity_mean": 0.944,
       "entropy_l0": 3.973,
       "max_entropy": 4.159,
-      "gap": -0.119,
-      "gap_std": 0.014,
-      "pos": 0,
+      "gap": 0.024,
+      "gap_std": 0.015,
+      "pos": 4,
       "n": 4,
-      "wall_s": 19.16
+      "wall_s": 31.87
     }
   ],
-  "ts": "2026-06-26 14:50:20"
+  "ts": "2026-06-26 15:03:12"
 }

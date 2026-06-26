@@ -179,8 +179,11 @@ def train(cfg: ScaleCfg, data):
 
 def _as_moecfg(cfg: ScaleCfg):
     from zerograd_moe import MoECfg
+    # v4: coverage weight auto-scales with expert count (more experts -> coverage need dominates).
+    # Validated at 3L/64e: lam_cov ~ (N/16)^2 restores importance>random (gap -0.22 -> +0.04, 3/3).
+    lam_cov_eff = cfg.lam_cov * (cfg.n_experts / 16.0) ** 2
     return MoECfg(n_experts=cfg.n_experts, k_update=cfg.k_update, routing_mode=cfg.routing_mode,
-                  soft_floor=cfg.soft_floor, ema_rho=cfg.ema_rho, lam_cov=cfg.lam_cov, lam_lev=cfg.lam_lev,
+                  soft_floor=cfg.soft_floor, ema_rho=cfg.ema_rho, lam_cov=lam_cov_eff, lam_lev=cfg.lam_lev,
                   lam_learn=cfg.lam_learn, lam_act=cfg.lam_act, lam_cost=cfg.lam_cost, seed=cfg.seed)
 
 

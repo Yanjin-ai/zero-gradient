@@ -1,0 +1,72 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Zero-Gradient · Phase A / Stage 5 (3.1) — Scale</title>
+<style>
+  :root{--bg:#0c0f14;--panel:#141a23;--panel2:#1b232f;--ink:#e7edf5;--mut:#8a98ab;--line:#2a3340;
+    --acc:#5db0ff;--acc2:#ffb454;--good:#3fcf8e;--bad:#ff6b6b;--warn:#ffd166;--mono:ui-monospace,Menlo,monospace;}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,sans-serif}
+  header{padding:16px 24px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  h1{font-size:16px;margin:0;font-weight:650}.sub{color:var(--mut);font-size:12px}
+  .wrap{padding:18px 24px;display:grid;grid-template-columns:repeat(12,1fr);gap:14px;max-width:1280px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:15px}
+  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--mut);margin:0 0 11px}
+  .s6{grid-column:span 6}.s12{grid-column:span 12}
+  canvas{width:100%;display:block}.legend{display:flex;gap:13px;font-size:11.5px;color:var(--mut);margin-top:7px;flex-wrap:wrap}
+  .legend i{display:inline-block;width:11px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}td,th{padding:6px 9px;border-bottom:1px solid var(--line);text-align:left}
+  th{color:var(--mut);font-weight:600;font-size:11px}.muted{color:var(--mut)}.nav{color:var(--acc);text-decoration:none;font-size:12px}
+  .empty{color:var(--mut);padding:40px;text-align:center}.verdict{font-size:13px;padding:9px 13px;border-radius:9px;font-weight:650;margin-bottom:10px}
+</style>
+<header>
+  <h1>📈 Phase A · Stage 5 (3.1) — nano → small (stacked MoE)</h1>
+  <span class="sub" id="info">loading…</span><span style="flex:1"></span>
+  <a class="nav" href="stage4.html">← stage 4</a> <a class="nav" href="index.html">main</a>
+</header>
+<div class="wrap" id="root"><div class="empty s12">Loading…</div></div>
+<script src="dataS.js" onerror="window.__no=1"></script>
+<script>
+const $=s=>document.querySelector(s);
+const C={acc:'#5db0ff',acc2:'#ffb454',good:'#3fcf8e',bad:'#ff6b6b',mut:'#8a98ab',line:'#2a3340',warn:'#ffd166'};
+function boot(){const d=window.STAGE_S;if(!d){$('#root').innerHTML='<div class="empty s12">No data — run <span style="font-family:monospace">python3 zerograd_moe_scale.py</span>.</div>';return;}render(d);}
+function render(d){
+  const r=$('#root');r.innerHTML='';$('#info').textContent=`${d.ts} · same corpus + gates · bigram ${d.bigram}`;
+  const allPos=d.rows.every(x=>x.gap>0);
+  const head=document.createElement('div');
+  const v=document.createElement('div');v.className='verdict';v.style.background=allPos?'#16352a':'#3a1d20';v.style.color=allPos?C.good:C.bad;
+  v.textContent=(allPos?'✓ mechanism scales':'⚠ controller advantage does not hold at all sizes')+' — specialization sharpens with scale (purity ↑); importance>random gap shown per size (v4 coverage auto-scales with N).';
+  head.appendChild(v);r.appendChild(card('s12','Scale 3.1 · does the mechanism hold as the system grows?',head));
+
+  // purity vs scale + gap vs scale
+  const p=document.createElement('div');const pc=mkc(p,520,210);
+  scaleBars(pc,d.rows.map(x=>[x.name.split('(')[0].trim(),x.purity_l0]),0.25,C.acc,'purity');
+  p.appendChild(legend([['expert topic purity (L0)',C.acc],['random 0.25',C.mut]]));
+  r.appendChild(card('s6','Specialization vs scale (higher = sharper)',p));
+
+  const g=document.createElement('div');const gc=mkc(g,520,210);
+  gapBars(gc,d.rows);g.appendChild(legend([['gap = random − importance (>0 ⇒ controller wins)',C.good],['zero',C.mut]]));
+  r.appendChild(card('s6','Controller advantage vs scale (with v4 coverage-scaling)',g));
+
+  // table
+  const t=document.createElement('div');
+  let h='<table><tr><th>config</th><th>params</th><th>ppl</th><th>purity L0</th><th>entropy L0</th><th>gap</th><th>±std</th><th>seeds +</th></tr>';
+  d.rows.forEach(x=>h+=`<tr><td>${x.name}</td><td>${(x.params/1e3).toFixed(0)}K</td><td>${x.ppl}</td><td>${x.purity_l0}</td><td class="muted">${x.entropy_l0}/${x.max_entropy}</td><td style="color:${x.gap>0?C.good:C.bad}">${x.gap>0?'+':''}${x.gap}</td><td class="muted">${x.gap_std}</td><td>${x.pos}/${x.n}</td></tr>`);
+  t.innerHTML=h+'</table>';r.appendChild(card('s12','Full comparison',t));
+}
+function card(s,t,b){const c=document.createElement('div');c.className='card '+s;c.innerHTML=`<h2>${t}</h2>`;c.appendChild(b);return c;}
+function legend(items){const l=document.createElement('div');l.className='legend';l.innerHTML=items.map(([t,c])=>`<span><i style="background:${c}"></i>${t}</span>`).join('');return l;}
+function mkc(p,w,h){const c=document.createElement('canvas');const dpr=devicePixelRatio||1;c.width=w*dpr;c.height=h*dpr;c.style.height=h+'px';c.getContext('2d').scale(dpr,dpr);c._W=w;c._H=h;p.appendChild(c);return c;}
+function scaleBars(cv,items,hline,color,lbl){const ctx=cv.getContext('2d'),W=cv._W,H=cv._H,pad={l:40,r:12,t:12,b:30};
+  let mx=Math.max(...items.map(i=>i[1]),hline)*1.15;const Y=y=>H-pad.b-(H-pad.t-pad.b)*y/mx,bw=(W-pad.l-pad.r)/items.length;ctx.font='10px ui-monospace';
+  for(let i=0;i<=4;i++){const val=mx*i/4,y=Y(val);ctx.strokeStyle=C.line;ctx.globalAlpha=.5;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();ctx.globalAlpha=1;ctx.fillStyle=C.mut;ctx.fillText(val.toFixed(2),4,y+3);}
+  const yh=Y(hline);ctx.strokeStyle=C.mut;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(pad.l,yh);ctx.lineTo(W-pad.r,yh);ctx.stroke();ctx.setLineDash([]);
+  items.forEach((it,i)=>{const x=pad.l+i*bw+bw*0.2,y=Y(it[1]);ctx.fillStyle=color;ctx.fillRect(x,y,bw*0.6,H-pad.b-y);ctx.fillStyle='#cdd7e3';ctx.fillText(it[1].toFixed(2),x,y-4);ctx.fillStyle=C.mut;ctx.fillText(it[0],x,H-pad.b+14);});}
+function gapBars(cv,rows){const ctx=cv.getContext('2d'),W=cv._W,H=cv._H,pad={l:44,r:12,t:12,b:30};
+  let mn=Math.min(0,...rows.map(x=>x.gap-x.gap_std)),mx=Math.max(...rows.map(x=>x.gap+x.gap_std),0.05);const rg=(mx-mn)||1;mn-=rg*.1;mx+=rg*.1;
+  const Y=y=>H-pad.b-(H-pad.t-pad.b)*(y-mn)/((mx-mn)),bw=(W-pad.l-pad.r)/rows.length;ctx.font='10px ui-monospace';
+  for(let i=0;i<=4;i++){const val=mn+(mx-mn)*i/4,y=Y(val);ctx.strokeStyle=C.line;ctx.globalAlpha=.5;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();ctx.globalAlpha=1;ctx.fillStyle=C.mut;ctx.fillText(val.toFixed(2),4,y+3);}
+  const y0=Y(0);ctx.strokeStyle=C.mut;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(pad.l,y0);ctx.lineTo(W-pad.r,y0);ctx.stroke();ctx.setLineDash([]);
+  rows.forEach((x,i)=>{const cx=pad.l+i*bw+bw*0.2,bwi=bw*0.6,y=Y(x.gap);ctx.fillStyle=x.gap>0?C.good:C.bad;ctx.fillRect(cx,Math.min(y,y0),bwi,Math.abs(y-y0));
+    const e1=Y(x.gap+x.gap_std),e2=Y(x.gap-x.gap_std);ctx.strokeStyle='#dfe7f0';ctx.lineWidth=1.3;ctx.beginPath();ctx.moveTo(cx+bwi/2,e1);ctx.lineTo(cx+bwi/2,e2);ctx.stroke();
+    ctx.fillStyle='#cdd7e3';ctx.fillText((x.gap>0?'+':'')+x.gap,cx,y-5);ctx.fillStyle=C.mut;ctx.fillText(x.name.split('(')[1].replace(')',''),cx,H-pad.b+14);});}
+boot();
+</script>
