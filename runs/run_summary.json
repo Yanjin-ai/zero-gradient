@@ -1,0 +1,102 @@
+{
+  "config": {
+    "name": "small",
+    "d_model": 128,
+    "vocab": 4000,
+    "seq_len": 16,
+    "n_layers": 2,
+    "n_experts": 48,
+    "k_route": 2,
+    "k_update": 4,
+    "capacity_factor": 2.0,
+    "dtype": "float32",
+    "steps": 600,
+    "batch_size": 64,
+    "lr": 0.1,
+    "proto_ema": 0.05,
+    "time_limit_s": 120.0,
+    "eval_every": 100,
+    "param_gate": 0.0
+  },
+  "corpus": "synthetic(local)",
+  "param_count": 3167040,
+  "param_gigaparams": 0.003,
+  "per_step_updated_experts": 8,
+  "update_fraction": 0.0833,
+  "unigram_ppl": 20.13,
+  "train": {
+    "curve": [
+      {
+        "step": 0,
+        "monitor": 3.5852,
+        "val_ppl": 35.709,
+        "t": 0.1,
+        "tok_s": 13637
+      },
+      {
+        "step": 100,
+        "monitor": 3.0051,
+        "val_ppl": 15.921,
+        "t": 0.6,
+        "tok_s": 183350
+      },
+      {
+        "step": 200,
+        "monitor": 2.1739,
+        "val_ppl": 11.006,
+        "t": 1.0,
+        "tok_s": 199244
+      },
+      {
+        "step": 300,
+        "monitor": 2.196,
+        "val_ppl": 8.644,
+        "t": 1.5,
+        "tok_s": 206431
+      },
+      {
+        "step": 400,
+        "monitor": 2.2495,
+        "val_ppl": 7.279,
+        "t": 2.0,
+        "tok_s": 210521
+      },
+      {
+        "step": 500,
+        "monitor": 2.3892,
+        "val_ppl": 6.509,
+        "t": 2.4,
+        "tok_s": 212780
+      },
+      {
+        "step": 599,
+        "monitor": 2.0039,
+        "val_ppl": 6.026,
+        "t": 2.9,
+        "tok_s": 214354
+      }
+    ],
+    "steps": 600,
+    "wall_s": 2.9,
+    "peak_mem_mb": 12.1,
+    "final_ppl": 6.026,
+    "autograd_used": false
+  },
+  "bp_oom": {
+    "resident_fp16_GB": 0.01,
+    "bp_min_GB_weights_grads_adam": 0.02,
+    "t4_GB": 16,
+    "bp_fits_t4": true
+  },
+  "gates": {
+    "resident params >= gate": true,
+    "zero autograd (grad disabled)": true,
+    "monitor loss decreased": true,
+    "val_ppl < unigram (sanity)": true,
+    "deterministic (re-run identical)": true,
+    "BP-4B would OOM on T4 (we run)": false
+  },
+  "gates_passed": 5,
+  "gates_total": 6,
+  "ts": "2026-06-26 23:25:58"
+}
