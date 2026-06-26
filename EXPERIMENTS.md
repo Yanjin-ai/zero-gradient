@@ -69,6 +69,16 @@
 
 ---
 
+## E11 · 阶段 A / Stage 5 (3.1)：nano → small 堆叠 MoE（机制是否可扩）
+- **目标**：同语料同门禁，沿结构轴放大（加宽 d、堆 2–3 个 MoE block、增专家数），EMA-routing + controller v3 + coverage 全不变，看特化和 importance>random gap 是否保持/放大。`zerograd_moe_scale.py`（多层堆叠，每层独立 prototypes/experts/local head/controller）。
+- **过程修复**：多层重构漏了 embedding 末-token 直连更新 → 模型学坏（ppl 13+，不及 bigram）；补回后 ppl 恢复（7.2/7.0/6.9，与 stage4 importance@k=4 一致）。
+- **结果（修复后，4 seed）**：
+  - nano  1L d64  16e: purity 0.80, gap **+0.048**±0.036 (3/4)
+  - small 2L d128 32e: purity 0.84, gap **−0.014**±0.021 (1/4)
+  - small 3L d128 64e: purity 0.94, gap **−0.119**±0.014 (0/4)
+- **判决**：✅ **特化随规模更锐利**（purity 0.80→0.94，熵不坍塌）；❌ **controller 优势不可扩——随专家数增加而侵蚀并反转**（gap +0.05→−0.01→−0.12）。**根因 = B 实验的"覆盖"张力在大 N 重现**：专家越多、每步预算固定 → 欠训练专家越多 → 覆盖压倒价值 → "集中"(importance)饿死多数专家、输给"铺开"(random)。**v3 权重在 N=16 调的，不迁移到 N=64。对 4B(~3700 专家)是强警告。**
+- **修复方向（验证中）**：coverage 权重需随 N 放大（或覆盖优先调度 + importance 只管边际预算）。lam_cov sweep @3L/64e 测 importance 能否回正。
+
 ## nano 闭环完成 → 下一步：scale 设计
 dense+local 规则 ✓ → B 实验定因 ✓ → Stage 3 特化 ✓ → Stage 4 importance>random ✓。
 下一步谈 scale（更大 MoE / 4B surrogate），保持结构比值（深度/宽度、稀疏专家/主干预算、controller 控制比例、state-cache/参数比），并在更紧预算下复测 gap 是否保持/放大。
