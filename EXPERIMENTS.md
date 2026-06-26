@@ -87,6 +87,14 @@
 - **判决**：✅ **特化机制在真实分布下成立**——EMA-routing 在无标记真实文本里找到内容簇（coherence>0），模型 ppl 远超 bigram。❌ **controller 优势被真实数据 run 间方差吞掉**（gap std 3.25 ≫ |mean| 0.24）——synthetic 上 ~0.05 ppl 的优势在真实噪声（±3 ppl）下不可见。与"优势小、依赖紧预算+大 N 才放大"一致。
 - **启示**：① 特化是机制的鲁棒部分，真实数据照样成立，可放心带去 4B；② controller 的资源分配优势在 nano/small 真实数据上是 wash，**4B 的赌注押在"紧预算 + 大 N 放大优势"这条尚未在真实数据上证实的趋势上**——3.3 surrogate 要专门验证它，或先做信号去噪（更强 EMA / 更鲁棒 leverage）+ 紧预算复测。
 
+## E13 · 阶段 A / Stage 5 (3.3)：4B-surrogate（大 N + 极紧预算，PPL gap 能否冲出噪声）
+- **目标**：唯一问题——"N 大、预算极紧的 surrogate 里 importance vs random 的 gap 能否超过真实噪声方差"。自然语料 + N=64 + k_update 扫 {1,4,16}（k/N 0.016/0.062/0.25），各 5 seed paired，1800 步。`zerograd_moe_nat.py surrogate`。
+- **结果**：ppl 377–383（全碾压 bigram 649）；coherence **+0.396**（比 3.2 更强）、熵 3.53/4.16 不坍塌。
+  - k=1: gap −1.14±1.50 (2/5) | k=4: −0.78±2.13 (2/5) | k=16: +1.30±2.98 (4/5)。**每档 std≫|mean|，无一冲出噪声**；收紧预算也没让 importance 冒头。
+  - **关键副产品**：imp@k=1(377) ≈ @k=16(381) → **每步只更新 1.6% 的专家，质量几乎不掉**。
+- **判决（决定性）**：❌ **controller 的 PPL 优势在真实数据上不存在**（任何预算档都被噪声吞没）→ **Kaggle headline 不能押在"importance 改进 PPL"**。✅ 特化 + 内容路由在大 N 真实数据上更锐利、稳健。✅ **极稀疏更新（k_update≪N）不损质量 = 系统效率的硬证据**。
+- **战略转向（最终）**：Kaggle 两条腿 = ①"专家特化 + 内容路由的零梯度 MoE 真能学"（已 toy+真实文本验证）；②"4B 常驻但每步训练 FLOPs ∝ k_update、与 N 解耦 → 击败 BP 的 memory/speed（BP 训 4B 在 T4 直接 OOM）"。**不再把 headline 押在 importance>random 的可见 PPL 改进上**——它在真实数据是 wash；controller 的价值是"让极稀疏更新不掉质量"，即效率，不是 PPL。
+
 ## nano 闭环完成 → 下一步：scale 设计
 dense+local 规则 ✓ → B 实验定因 ✓ → Stage 3 特化 ✓ → Stage 4 importance>random ✓。
 下一步谈 scale（更大 MoE / 4B surrogate），保持结构比值（深度/宽度、稀疏专家/主干预算、controller 控制比例、state-cache/参数比），并在更紧预算下复测 gap 是否保持/放大。

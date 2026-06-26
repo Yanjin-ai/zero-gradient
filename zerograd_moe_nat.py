@@ -88,5 +88,35 @@ def run():
     return out
 
 
+def run33(seeds=5, k_grid=(1, 4, 16)):
+    """3.3 surrogate: natural corpus, large-ish N, EXTREME-tight budget. Does the gap clear noise?"""
+    data = build_natural_corpus()
+    base = dict(d_model=128, n_layers=2, n_experts=64, k_route=2, seq_len=16, route_rep="mean", steps=1800)
+    print(f"surrogate: N=64 experts, natural corpus, unigram={data['unigram_ppl']:.0f} bigram={data['bigram_ppl']:.0f}")
+    rows = []; mdl = None
+    for k in k_grid:
+        ri, rr = [], []
+        for sd in range(seeds):
+            r = train(ScaleCfg(routing_mode="importance", seed=sd, k_update=k, **base), data); ri.append(r["ppl"])
+            if k == k_grid[0] and sd == 0: mdl = r["model"]
+            rr.append(train(ScaleCfg(routing_mode="random", seed=sd, k_update=k, **base), data)["ppl"])
+        g = np.array(rr) - np.array(ri)
+        clears = bool(g.mean() > g.std() and (g > 0).sum() >= seeds-1)
+        rows.append(dict(k_update=k, frac=round(k/64, 3), importance=round(float(np.mean(ri)), 2),
+                         random=round(float(np.mean(rr)), 2), gap=round(float(g.mean()), 3),
+                         gap_std=round(float(g.std()), 3), pos=int((g > 0).sum()), n=seeds, clears_noise=clears))
+        print(f"  k_update={k:2d} (k/N={k/64:.3f}): imp={np.mean(ri):.2f} rnd={np.mean(rr):.2f} "
+              f"gap=+{g.mean():.3f}±{g.std():.3f} ({int((g>0).sum())}/{seeds}) clears_noise={clears}")
+    coh, ent, maxent = coherence(mdl, data, ScaleCfg(**base), layer=0)
+    out = dict(stage="A-scale-3.3-surrogate", corpus="natural", n_experts=64, unigram=round(data["unigram_ppl"], 1),
+               bigram=round(data["bigram_ppl"], 1), coherence=coh, route_entropy=ent, max_entropy=maxent,
+               rows=rows, ts=time.strftime("%Y-%m-%d %H:%M:%S"))
+    (HERE/"runs").mkdir(exist_ok=True); (HERE/"runs"/"surrogate.json").write_text(json.dumps(out, indent=2))
+    (HERE/"dashboard").mkdir(exist_ok=True); (HERE/"dashboard"/"data33.js").write_text("window.STAGE_33="+json.dumps(out)+";")
+    print(f"  coherence={coh:+.3f} entropy={ent}/{maxent}")
+    return out
+
+
 if __name__ == "__main__":
-    run()
+    import sys
+    run33() if (len(sys.argv) > 1 and sys.argv[1] == "surrogate") else run()
