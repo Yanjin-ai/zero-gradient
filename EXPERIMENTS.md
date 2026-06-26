@@ -81,6 +81,12 @@
 - **v4 controller（自动缩放）**：`lam_cov_eff = lam_cov·(N/16)²`（N=16→1, 32→4, 64→16）。三配置重测：nano 16e **+0.048**(3/4)、small 32e **−0.007**(0/4, 平手)、small 64e **+0.024**(4/4)。**大 N 灾难性反转修好**（64e −0.119→+0.024，通往 4B 最关键方向）；32e 卡平手→缩放律还需精细化（非完美单调全胜，已诚实标注）。仪表盘 `dashboard/scale.html`。
 - **3.1 总结**：特化可扩（purity 0.80→0.94）；controller 默认权重不可扩，但**coverage 随 N 缩放后大 N 优势恢复**。下一步 3.2 用更自然语料 + 精细化缩放律。
 
+## E12 · 阶段 A / Stage 5 (3.2)：自然语料（机制在真实分布下是否存在）
+- **目标**：换真实噪声分布（Pride & Prejudice + Shakespeare，`data/natural.txt`，9万词，无 topic 标记），机制不变，路由键改 context mean（无标记），重测特化 + importance>random。`zerograd_moe_nat.py`。无标签特化度量 = 路由 coherence（key 到自己 prototype 的相似度 − 到随机的，>0=内容聚类）。
+- **结果（small 2L d128 32e，4 seed）**：vocab 4000，unigram 821，bigram 649。uniform 398 / importance 393.6±5.7 / random 393.4 —— **全部碾压 bigram**。coherence **+0.224**（>0），entropy 2.94/3.47（不坍塌）。gap **−0.24 ± 3.25**（2/4）。
+- **判决**：✅ **特化机制在真实分布下成立**——EMA-routing 在无标记真实文本里找到内容簇（coherence>0），模型 ppl 远超 bigram。❌ **controller 优势被真实数据 run 间方差吞掉**（gap std 3.25 ≫ |mean| 0.24）——synthetic 上 ~0.05 ppl 的优势在真实噪声（±3 ppl）下不可见。与"优势小、依赖紧预算+大 N 才放大"一致。
+- **启示**：① 特化是机制的鲁棒部分，真实数据照样成立，可放心带去 4B；② controller 的资源分配优势在 nano/small 真实数据上是 wash，**4B 的赌注押在"紧预算 + 大 N 放大优势"这条尚未在真实数据上证实的趋势上**——3.3 surrogate 要专门验证它，或先做信号去噪（更强 EMA / 更鲁棒 leverage）+ 紧预算复测。
+
 ## nano 闭环完成 → 下一步：scale 设计
 dense+local 规则 ✓ → B 实验定因 ✓ → Stage 3 特化 ✓ → Stage 4 importance>random ✓。
 下一步谈 scale（更大 MoE / 4B surrogate），保持结构比值（深度/宽度、稀疏专家/主干预算、controller 控制比例、state-cache/参数比），并在更紧预算下复测 gap 是否保持/放大。

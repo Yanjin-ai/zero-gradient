@@ -47,6 +47,7 @@ class ScaleCfg:
     lr_embed: float = 0.05
     proto_ema: float = 0.05
     seed: int = 0
+    route_rep: str = "first"          # "first" = topic-marker (synthetic) | "mean" = context mean (natural text)
     routing_mode: str = "importance"
     soft_floor: float = 0.15
     ema_rho: float = 0.9
@@ -75,8 +76,10 @@ class StackedMoE:
         q = emb @ self.Wq; k = emb @ self.Wk; sc = (q @ k.transpose(1, 2))/math.sqrt(emb.shape[-1])
         m = torch.triu(torch.ones(T, T, device=emb.device), diagonal=1).bool()
         att = torch.softmax(sc.masked_fill(m, float("-inf")), -1)
-        first = (x == 0).long().sum(1).clamp(max=T-1)
-        rrep = emb[torch.arange(x.shape[0]), first]              # topic-bearing routing rep
+        if self.cfg.route_rep == "mean":                         # natural text: no markers -> context mean
+            pm = (x != 0).float().unsqueeze(-1); rrep = (emb*pm).sum(1)/(pm.sum(1)+1e-6)
+        else:                                                    # synthetic: topic-marker (first non-pad) token
+            first = (x == 0).long().sum(1).clamp(max=T-1); rrep = emb[torch.arange(x.shape[0]), first]
         return (emb + att @ emb)[:, -1], att[:, -1, :], rrep
 
     def route(self, rrep, Cl):
@@ -172,8 +175,9 @@ def train(cfg: ScaleCfg, data):
                 model.E.index_add_(0, xb[:, -1], -cfg.lr_embed*dh); model.pos[xb.shape[1]-1] -= cfg.lr_embed*dh.sum(0)  # direct last-token path
             hin = hl
     ppl = evaluate(model, data["Xval"], data["Yval"], cfg)
-    purs = [purity_entropy(model, data, l) for l in range(cfg.n_layers)]
-    return dict(ppl=round(ppl, 3), purity=[round(p, 3) for p, _ in purs], entropy=[round(e, 3) for _, e in purs],
+    purs = [purity_entropy(model, data, l) for l in range(cfg.n_layers)] if "Tval" in data else []
+    return dict(model=model, ppl=round(ppl, 3),
+                purity=[round(p, 3) for p, _ in purs], entropy=[round(e, 3) for _, e in purs],
                 max_entropy=round(math.log(cfg.n_experts), 3), wall_s=round(time.time()-t0, 2), params=model.num_params)
 
 
