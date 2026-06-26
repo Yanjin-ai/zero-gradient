@@ -53,7 +53,7 @@ class MoECfg:
     eval_batches: int = 16
     seed: int = 0                    # run seed (varies init + batch order -> across-run variance)
     # ---- Stage 4: controller v3 (budget allocation over touched experts) ----
-    routing_mode: str = "off"        # off | uniform | random | fixed_topk | importance
+    routing_mode: str = "off"        # off | uniform | random | fixed_topk | importance | v5
     k_update: int = 8                # update budget: how many touched experts get FULL update per step
     soft_floor: float = 0.15         # non-selected experts get this fraction of lr
     ema_rho: float = 0.9
@@ -62,6 +62,9 @@ class MoECfg:
     lam_learn: float = 0.8           # learnability (local-error drop)
     lam_act: float = 0.2
     lam_cost: float = 0.2
+    # ---- v5 layered scheduler: deficit-primary (zero-noise) + bounded value tie-breaker ----
+    lam_cov_base: float = 1.0        # effective lam_cov(N) = base*log(N) -> coverage gets HARDER with N
+    lam_val: float = 0.3             # value tie-breaker is tanh-bounded to [-lam_val, lam_val] -> never dominates
 
 
 class ZeroGradMoE:
@@ -131,6 +134,7 @@ class Ctrl:
         n = cfg.n_experts; self.cfg = cfg
         self.m_err = torch.full((n,), float("nan")); self.m_lev = torch.zeros(n); self.m_act = torch.zeros(n)
         self.learn = torch.zeros(n); self.usage = torch.zeros(n); self.upd = torch.zeros(n); self.s_ema = torch.zeros(n)
+        self.upd_count = torch.zeros(n); self.touch_count = torch.zeros(n)   # cumulative coverage counters (zero-noise)
     @staticmethod
     def _z(x, mask):
         v = x[mask]
@@ -152,16 +156,27 @@ class Ctrl:
              - c.lam_cost*self._z(cost, mask))
         self.s_ema = c.ema_rho*self.s_ema + (1-c.ema_rho)*s
         k = min(c.k_update, int(mask.sum()))
+        self.touch_count[cand] += 1.0
         if c.routing_mode in ("off", "uniform"): sel = set(cand.tolist())
         elif c.routing_mode == "random":
             g = torch.Generator().manual_seed(SEED + c.seed*131 + step)
             sel = set(cand[torch.randperm(cand.numel(), generator=g)[:k]].tolist())
         elif c.routing_mode == "fixed_topk": sel = set(cand[:k].tolist())
-        else:
+        elif c.routing_mode == "v5":
+            # LAYERED: deficit-primary (exact counting -> zero noise) + tanh-bounded value tie-breaker.
+            # value can NEVER overpower coverage because it is clamped to [-lam_val, lam_val] while the
+            # coverage term scales as lam_cov_base*log(N).
+            deficit = self.touch_count - self.upd_count                  # owed training, exact
+            dv = deficit[mask]; dnorm = (deficit - dv.min())/((dv.max()-dv.min()).clamp_min(1e-6))
+            value = torch.tanh(self._z(self.m_lev, mask) + self._z(self.learn, mask)) * c.lam_val
+            sv = (c.lam_cov_base * math.log(max(2, c.n_experts))) * dnorm + value
+            order = torch.argsort(sv[cand], descending=True); sel = set(cand[order[:k]].tolist())
+        else:                                                            # "importance" = v4 multi-signal sum
             order = torch.argsort(self.s_ema[cand], descending=True); sel = set(cand[order[:k]].tolist())
         selm = torch.zeros(c.n_experts)
         if sel: selm[list(sel)] = 1.0
         self.upd = 0.95*self.upd + 0.05*selm
+        if sel: self.upd_count[list(sel)] += 1.0                         # cumulative update counts (coverage metric)
         return sel
 
 

@@ -178,7 +178,8 @@ def train(cfg: ScaleCfg, data):
     purs = [purity_entropy(model, data, l) for l in range(cfg.n_layers)] if "Tval" in data else []
     return dict(model=model, ppl=round(ppl, 3),
                 purity=[round(p, 3) for p, _ in purs], entropy=[round(e, 3) for _, e in purs],
-                max_entropy=round(math.log(cfg.n_experts), 3), wall_s=round(time.time()-t0, 2), params=model.num_params)
+                max_entropy=round(math.log(cfg.n_experts), 3), wall_s=round(time.time()-t0, 2), params=model.num_params,
+                upd_count=[c.upd_count.tolist() for c in ctrls], touch_count=[c.touch_count.tolist() for c in ctrls])
 
 
 def _as_moecfg(cfg: ScaleCfg):

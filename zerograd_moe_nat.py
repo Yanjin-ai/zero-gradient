@@ -117,6 +117,54 @@ def run33(seeds=5, k_grid=(1, 4, 16)):
     return out
 
 
+def _gini(x):
+    x = np.sort(np.asarray(x, dtype=float)); n = len(x)
+    if x.sum() == 0: return 0.0
+    return float((2*np.arange(1, n+1) - n - 1).dot(x) / (n*x.sum()))
+
+
+def coverage_stats(upd_counts, touch_counts):
+    # Coverage = PROPORTIONAL training: among USED experts, the backlog (times routed - times updated)
+    # should stay small/bounded. v5 minimizes the worst backlog by construction; random lets it grow on
+    # whichever popular experts it happens to skip. (Raw update-count uniformity is the WRONG metric:
+    # rarely-routed experts deserve few updates.)
+    u = np.array(upd_counts[0]); t = np.array(touch_counts[0]); used = t > 0
+    d = (t - u)[used]                                  # backlog among used experts
+    ratio = (u[used] / (t[used] + 1e-9))              # update:usage ratio (ideal = uniform across experts)
+    return dict(max_backlog=round(float(d.max()) if d.size else 0, 2),
+                std_backlog=round(float(d.std()) if d.size else 0, 2),
+                # usage-weighted fraction of traffic going to under-trained experts (ratio < half the mean ratio)
+                undertrained_traffic=round(float(t[used][ratio < 0.5*ratio.mean()].sum()/t[used].sum()) if d.size else 0, 4),
+                ratio_gini=round(_gini(ratio), 4))
+
+
+def run_cov(seeds=4, k_grid=(1, 8, 32)):
+    """FINAL Phase-A diagnostic: in which budget regime (if any) does the controller win on COVERAGE
+    (its true objective: proportional training, low backlog) — measured by undertrained-traffic, NOT PPL.
+    Sweeps k_update because coverage can only be maintained when the budget is a meaningful fraction."""
+    data = build_natural_corpus()
+    base = dict(d_model=128, n_layers=2, n_experts=64, k_route=2, seq_len=16, route_rep="mean", steps=1200)
+    print(f"coverage diagnostic: N=64, natural corpus, {seeds} seeds, sweep k_update {k_grid}")
+    modes = {"v5": "v5", "v4": "importance", "random": "random"}
+    out = {"stage": "A-coverage-diagnostic", "n_experts": 64, "rows": [], "ts": time.strftime("%Y-%m-%d %H:%M:%S")}
+    for k in k_grid:
+        for name, m in modes.items():
+            UT, MB, P = [], [], []
+            for sd in range(seeds):
+                r = train(ScaleCfg(routing_mode=m, seed=sd, k_update=k, **base), data)
+                s = coverage_stats(r["upd_count"], r["touch_count"])
+                UT.append(s["undertrained_traffic"]); MB.append(s["max_backlog"]); P.append(r["ppl"])
+            row = dict(k_update=k, mode=name, undertrained_traffic=round(float(np.mean(UT)), 4),
+                       ut_std=round(float(np.std(UT)), 4), max_backlog=round(float(np.mean(MB)), 1), ppl=round(float(np.mean(P)), 2))
+            out["rows"].append(row)
+            print(f"  k={k:2d} {name:8s} undertrained_traffic={row['undertrained_traffic']:.4f}±{row['ut_std']:.4f} "
+                  f"max_backlog={row['max_backlog']:.0f} ppl={row['ppl']}")
+    (HERE/"runs").mkdir(exist_ok=True); (HERE/"runs"/"coverage.json").write_text(json.dumps(out, indent=2))
+    (HERE/"dashboard").mkdir(exist_ok=True); (HERE/"dashboard"/"dataCov.js").write_text("window.STAGE_COV="+json.dumps(out)+";")
+    return out
+
+
 if __name__ == "__main__":
     import sys
-    run33() if (len(sys.argv) > 1 and sys.argv[1] == "surrogate") else run()
+    a = sys.argv[1] if len(sys.argv) > 1 else ""
+    {"surrogate": run33, "coverage": run_cov}.get(a, run)()

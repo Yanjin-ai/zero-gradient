@@ -95,6 +95,15 @@
 - **判决（决定性）**：❌ **controller 的 PPL 优势在真实数据上不存在**（任何预算档都被噪声吞没）→ **Kaggle headline 不能押在"importance 改进 PPL"**。✅ 特化 + 内容路由在大 N 真实数据上更锐利、稳健。✅ **极稀疏更新（k_update≪N）不损质量 = 系统效率的硬证据**。
 - **战略转向（最终）**：Kaggle 两条腿 = ①"专家特化 + 内容路由的零梯度 MoE 真能学"（已 toy+真实文本验证）；②"4B 常驻但每步训练 FLOPs ∝ k_update、与 N 解耦 → 击败 BP 的 memory/speed（BP 训 4B 在 T4 直接 OOM）"。**不再把 headline 押在 importance>random 的可见 PPL 改进上**——它在真实数据是 wash；controller 的价值是"让极稀疏更新不掉质量"，即效率，不是 PPL。
 
+## E14 · Phase A 补一刀：覆盖诊断（controller 在它"真正的目标"上赢不赢？）
+- **目的**：校准后用**覆盖指标**（而非 PPL）验证 controller 角色。实现 v5 分层调度器（deficit 主信号零噪声 + tanh 有界 value tie-breaker，`λ_cov(N)=base·logN`）。指标 = undertrained_traffic（欠训练流量占比）+ max_backlog，**不是 PPL**。自然语料 N=64，扫 k_update {1,8,32}，4 seed。
+- **结果**：undertrained_traffic 上 **random 每档都最好**（k=1: v5 0.042 / v4 0.016 / random 0.010；k=8/32 同向）；v5 仅在 max_backlog（最坏单专家欠账）略低于 random（压低最坏情况，但饿死中等使用专家 → 总欠训练更多）。
+- **判决（决定性，最终）**：**没有任何 controller 版本（v3/v4/v5）在 PPL 或覆盖上干净地打败 random。** 根因：**capacity 路由已把 forward 负载均衡**，每步被触达专家集本就近均匀 → random 选已近最优 → controller 无发挥空间。
+- **由此进一步收紧的真相**：
+  - ✅ 仍稳：① MoE 特化 + 内容路由；② 极稀疏更新（k_update≪N）不掉质量——**但 random 选也成立**（k=1 ppl ≈ k=32），所以使能者是 **regime（局部规则独立可跳 + capacity 路由 + basin 鲁棒）**，**不是聪明的 controller**。
+  - ⤵️ 进一步降级：controller 不再是"使能机制"，而是"可选项，不优于 random"。简单**确定性 round-robin/deficit 调度**仍有用——为**确定性复现**（Kaggle 硬要求）+ 最坏情况 backlog 上界，但**不是卖点**。
+- **对 Phase B 的最终简化**：headline 收成两条且更硬——① 零梯度特化 MoE 真能学；② 4B 常驻 + 极稀疏训练不掉质量（local rules + capacity 路由 + basin 鲁棒使能，**无需聪明 controller**）。调度器用最简确定性 round-robin（为确定性，不为性能）。**不再声称智能调度**——这反而是更强、更难被 reviewer 打的定位。
+
 ## nano 闭环完成 → 下一步：scale 设计
 dense+local 规则 ✓ → B 实验定因 ✓ → Stage 3 特化 ✓ → Stage 4 importance>random ✓。
 下一步谈 scale（更大 MoE / 4B surrogate），保持结构比值（深度/宽度、稀疏专家/主干预算、controller 控制比例、state-cache/参数比），并在更紧预算下复测 gap 是否保持/放大。

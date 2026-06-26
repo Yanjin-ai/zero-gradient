@@ -107,3 +107,23 @@
 - **controller 的证据用覆盖/稳定性指标呈现**，不用 PPL gap。
 - **评测**：PPL 做 sanity（WikiText-103，证明能学）；系统指标(峰值显存/step 时间/FLOPs)做 headline；覆盖均匀度/dead-expert/稳定性做 controller 必要性的证据。
 - **controller v5**：coverage-dominant（deficit 轮转），value 信号极小权重。
+
+---
+
+## 9. 补一刀结果（最终修正，E14）——比第 3 节假设更进一步
+
+实现了 v5 分层调度器（deficit 主 + tanh 有界 value）并用**覆盖指标**（非 PPL）诊断后，得到一个**修正第 2–3 节假设**的决定性结果：
+
+> **controller 在覆盖上也没有干净的胜利。** undertrained_traffic 上 random 每个预算档都最好；v5 只压低了 max_backlog（最坏单专家），代价是饿死中等使用专家、总欠训练更多。
+
+**根因**：capacity-limited 路由已经把 forward 负载均衡了 → 每步被触达专家集近均匀 → random 选已近最优 → controller 没有发挥空间。
+
+**因此对前面的修正：**
+- 第 0/1/2 节"controller 是无噪声覆盖调度器、coverage 可辨识"——**方向对，但经验上 random 已经把覆盖做得足够好**，controller 的 deficit 排序并不能再榨出可辨识增益（除了略微的 max_backlog 上界）。
+- 第 4 节"controller 是极稀疏训练的**使能机制**"——**降级**：极稀疏训练用 random 选也成立（k=1 ppl ≈ k=32），所以使能者是 **regime**（局部规则独立可跳 + capacity 路由 + basin 鲁棒），**不是 controller**。
+- controller 的剩余价值：**确定性 round-robin** 用于**可复现性（Kaggle 硬要求）+ 最坏 backlog 上界**，不是性能卖点。
+
+**最终定位（Phase B 用）**：headline 两条，都不依赖聪明 controller——
+1. 零梯度特化 MoE 真能学（内容路由 + 局部规则，toy+real 验证）；
+2. 4B 常驻 + 极稀疏更新不掉质量（local rules + capacity 路由 + basin 鲁棒使能）。
+调度器 = 最简确定性 round-robin（为确定性，不为性能）。**主动放弃"智能调度提升性能"的声明** → 更硬、更难被打。
