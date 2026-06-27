@@ -55,6 +55,7 @@ class Config:
     k_update: int = 4                 # DETERMINISTIC budget: experts updated per layer per step (k_update << N)
     capacity_factor: float = 2.0
     dtype: str = "float32"
+    tokenizer: str = "word"           # "word" | "bpe" (Phase D: offline-trained ByteLevel BPE subword)
     steps: int = 600
     batch_size: int = 64
     lr: float = 0.1
@@ -94,6 +95,7 @@ if os.environ.get("ZG_SMOKE") == "1":                          # smoke: 4B resid
 elif os.environ.get("ZG_RUN_MIN"):                             # real run with a wall-clock cap (minutes)
     KAGGLE.time_limit_s = int(os.environ["ZG_RUN_MIN"])*60; KAGGLE.eval_every = 100
 CONFIG = KAGGLE if (ON_KAGGLE and CUDA) else Config()          # auto-pick; flip manually if needed
+if os.environ.get("ZG_TOKENIZER"): CONFIG.tokenizer = os.environ["ZG_TOKENIZER"]   # Phase D: "bpe"
 DEVICE = torch.device("cuda:0" if CUDA else "cpu")
 DT = CONFIG.td
 
@@ -123,27 +125,37 @@ def build_data(cfg: Config):
         K=4; tmap={t:{s:verb[(subj.index(s)+3*t)%8] for s in subj} for t in range(K)}
         sents=[" ".join([f"t{rng.randrange(K)}","the",rng.choice(adj),s,tmap[rng.randrange(K)][s],"the",rng.choice(adj),rng.choice(obj)]) for s in (rng.choice(subj) for _ in range(8000))]
         text=" ".join(sents); corpus="synthetic(local)"
-    from collections import Counter
-    toks = _tok(text)
-    vocab = ["<pad>", "<unk>"] + [w for w, _ in Counter(toks).most_common(cfg.vocab-2)]
-    stoi = {w: i for i, w in enumerate(vocab)}
-    ids = torch.tensor([stoi.get(w, 1) for w in toks], dtype=torch.long)
-    X, Y = [], []
-    for i in range(0, min(len(ids)-cfg.seq_len-1, 400000), 3):
-        X.append(ids[i:i+cfg.seq_len]); Y.append(ids[i+cfg.seq_len])
-    X = torch.stack(X); Y = torch.stack(Y)
+    # --- tokenize (word-level | offline-trained ByteLevel BPE subword) ---
+    if cfg.tokenizer == "bpe":                                  # Phase D: subword -> meaningful PPL, no <unk> inflation
+        from tokenizers import Tokenizer, models, trainers, pre_tokenizers
+        tk = Tokenizer(models.BPE(unk_token="<unk>")); tk.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=True)
+        lines = [l for l in text.split("\n") if l.strip()] or [text]   # fixed order -> deterministic training
+        tk.train_from_iterator(lines, trainers.BpeTrainer(vocab_size=cfg.vocab, special_tokens=["<pad>", "<unk>"]))
+        vocab = [None]*tk.get_vocab_size()
+        ids = torch.tensor(tk.encode(text).ids, dtype=torch.long)
+        test_ids = torch.tensor(tk.encode(test_text).ids, dtype=torch.long) if test_text is not None else None
+    else:
+        from collections import Counter
+        vocab = ["<pad>", "<unk>"] + [w for w, _ in Counter(_tok(text)).most_common(cfg.vocab-2)]
+        stoi = {w: i for i, w in enumerate(vocab)}
+        ids = torch.tensor([stoi.get(w, 1) for w in _tok(text)], dtype=torch.long)
+        test_ids = torch.tensor([stoi.get(w, 1) for w in _tok(test_text)], dtype=torch.long) if test_text is not None else None
+    V = len(vocab)
+    def _win(t, stride, cap):
+        Xs, Ys = [], []
+        for i in range(0, min(len(t)-cfg.seq_len-1, cap), stride):
+            Xs.append(t[i:i+cfg.seq_len]); Ys.append(t[i+cfg.seq_len])
+        return (torch.stack(Xs), torch.stack(Ys)) if Xs else (None, None)
+    X, Y = _win(ids, 3, 400000)
     perm = torch.randperm(len(X), generator=torch.Generator().manual_seed(SEED)); X, Y = X[perm], Y[perm]
     nval = max(256, len(X)//20)
-    d = dict(corpus=corpus, vocab=vocab, stoi=stoi, Xtr=X[nval:].to(DEVICE), Ytr=Y[nval:].to(DEVICE),
+    d = dict(corpus=corpus + "/" + cfg.tokenizer, vocab=vocab, Xtr=X[nval:].to(DEVICE), Ytr=Y[nval:].to(DEVICE),
              Xval=X[:nval].to(DEVICE), Yval=Y[:nval].to(DEVICE))
-    cnt = torch.bincount(d["Ytr"], minlength=len(vocab)).float()+1e-6; p = cnt/cnt.sum()
+    cnt = torch.bincount(d["Ytr"], minlength=V).float()+1e-6; p = cnt/cnt.sum()
     d["unigram_ppl"] = float(torch.exp(-(p[d["Yval"]].log()).mean()))
-    if test_text is not None:                                  # official WikiText-103 test split
-        tt = _tok(test_text); tids = torch.tensor([stoi.get(w, 1) for w in tt], dtype=torch.long)
-        Xt, Yt = [], []
-        for i in range(0, len(tids)-cfg.seq_len-1, cfg.seq_len):
-            Xt.append(tids[i:i+cfg.seq_len]); Yt.append(tids[i+cfg.seq_len])
-        if Xt: d["Xtest"] = torch.stack(Xt)[:3000].to(DEVICE); d["Ytest"] = torch.stack(Yt)[:3000].to(DEVICE)
+    if test_ids is not None:                                    # official WikiText-103 test split
+        Xt, Yt = _win(test_ids, cfg.seq_len, 10**9)
+        if Xt is not None: d["Xtest"] = Xt[:3000].to(DEVICE); d["Ytest"] = Yt[:3000].to(DEVICE)
     return d
 
 
