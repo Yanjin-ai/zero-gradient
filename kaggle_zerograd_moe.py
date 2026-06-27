@@ -78,7 +78,7 @@ class Config:
 
 # 4B Kaggle config: experts hold the bulk. 4 layers x 950 experts x (1024^2) ≈ 3.99B + heads/emb ≈ 4.15B.
 KAGGLE = Config(name="kaggle-4B", d_model=1024, vocab=32000, seq_len=64, n_layers=4, n_experts=950,
-                k_route=2, k_update=4, dtype="float16", steps=10**9, time_limit_s=3*3600-300,
+                k_route=2, k_update=4, dtype="float16", lr=0.03, steps=10**9, time_limit_s=3*3600-300,
                 eval_every=200, param_gate=4_000_000_000)
 
 if os.environ.get("ZG_SMOKE") == "1":                          # smoke: 4B resident, ~4 min, measure throughput/mem
@@ -243,6 +243,7 @@ def train(model, data, cfg):
     while step < cfg.steps and time.time()-t0 < cfg.time_limit_s:
         g = torch.Generator().manual_seed(SEED+step); ix = torch.randint(0, len(Xtr), (cfg.batch_size,), generator=g)
         xb, yb = Xtr[ix], Ytr[ix]; B = xb.shape[0]
+        lrf = cfg.lr * min(1.0, (step+1)/200.0)                # linear warmup (200 steps) -> stabilizes start
         h, rrep = model.context(xb)
         hin, monitor = h, []
         for l in range(cfg.n_layers):
@@ -253,18 +254,18 @@ def train(model, data, cfg):
                 moe[mm] = moe[mm] + he; cache[e] = (inp, z, mm, he)
             hl = hin + moe/cfg.k_route
             loss, dh, dHb, dbH = ce_signal(hl, yb, model.Hb[l], model.bH[l]); monitor.append(loss)
-            model.Hb[l] = (model.Hb[l].float() - cfg.lr*dHb).to(cfg.td); model.bH[l] = (model.bH[l].float() - cfg.lr*dbH).to(cfg.td)
+            model.Hb[l] = (model.Hb[l].float() - lrf*dHb).to(cfg.td); model.bH[l] = (model.bH[l].float() - lrf*dbH).to(cfg.td)
             cand = torch.tensor(sorted(cache.keys())); sel = sched[l].select(cand, cfg.k_update)
             for e in sel:
                 inp, z, mm, he = cache[e]; dz = (dh[mm]/cfg.k_route) * (z.float() > 0).float()
-                model.We[l][e] = (model.We[l][e].float() - cfg.lr*(inp.float().T @ dz)).to(cfg.td)
-                model.be[l][e] = (model.be[l][e].float() - cfg.lr*dz.sum(0)).to(cfg.td)
+                model.We[l][e] = (model.We[l][e].float() - lrf*(inp.float().T @ dz)).to(cfg.td)
+                model.be[l][e] = (model.be[l][e].float() - lrf*dz.sum(0)).to(cfg.td)
             for e in torch.unique(assign).tolist():
                 mm = (assign == e).any(1)
                 model.C[l][e] = ((1-cfg.proto_ema)*model.C[l][e].float() + cfg.proto_ema*kk[mm].mean(0)).to(cfg.td)
             hin = hl
         # embedding update (approx local credit assignment from first block)
-        model.E.index_add_(0, xb[:, -1], (-cfg.lr*dh).to(cfg.td));
+        model.E.index_add_(0, xb[:, -1], (-lrf*dh).to(cfg.td));
         m = float(np.mean(monitor))
         if step % cfg.eval_every == 0 or step == cfg.steps-1:
             ppl = evaluate(model, data["Xval"], data["Yval"], cfg)

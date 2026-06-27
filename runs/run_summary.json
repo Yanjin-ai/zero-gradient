@@ -30,57 +30,57 @@
       {
         "step": 0,
         "monitor": 3.5852,
-        "val_ppl": 35.709,
+        "val_ppl": 36.04,
         "t": 0.1,
-        "tok_s": 13398
+        "tok_s": 12841
       },
       {
         "step": 100,
-        "monitor": 3.0051,
-        "val_ppl": 15.921,
-        "t": 0.7,
-        "tok_s": 151669
+        "monitor": 3.4146,
+        "val_ppl": 27.964,
+        "t": 0.5,
+        "tok_s": 188961
       },
       {
         "step": 200,
-        "monitor": 2.1739,
-        "val_ppl": 11.006,
-        "t": 1.2,
-        "tok_s": 177783
+        "monitor": 2.6378,
+        "val_ppl": 15.938,
+        "t": 1.0,
+        "tok_s": 204909
       },
       {
         "step": 300,
-        "monitor": 2.196,
-        "val_ppl": 8.644,
-        "t": 1.7,
-        "tok_s": 186753
+        "monitor": 2.4466,
+        "val_ppl": 11.032,
+        "t": 1.5,
+        "tok_s": 209616
       },
       {
         "step": 400,
-        "monitor": 2.2495,
-        "val_ppl": 7.279,
-        "t": 2.1,
-        "tok_s": 193688
+        "monitor": 2.4445,
+        "val_ppl": 8.652,
+        "t": 1.9,
+        "tok_s": 213147
       },
       {
         "step": 500,
-        "monitor": 2.3892,
-        "val_ppl": 6.509,
-        "t": 2.6,
-        "tok_s": 199190
+        "monitor": 2.4957,
+        "val_ppl": 7.313,
+        "t": 2.4,
+        "tok_s": 215317
       },
       {
         "step": 599,
-        "monitor": 2.0039,
-        "val_ppl": 6.026,
-        "t": 3.1,
-        "tok_s": 200681
+        "monitor": 2.0856,
+        "val_ppl": 6.534,
+        "t": 2.8,
+        "tok_s": 217244
       }
     ],
     "steps": 600,
-    "wall_s": 3.1,
+    "wall_s": 2.8,
     "peak_mem_mb": 12.1,
-    "final_ppl": 6.026,
+    "final_ppl": 6.534,
     "autograd_used": false
   },
   "bp_oom": {
@@ -99,5 +99,5 @@
   },
   "gates_passed": 5,
   "gates_total": 6,
-  "ts": "2026-06-26 23:56:46"
+  "ts": "2026-06-27 01:44:51"
 }
