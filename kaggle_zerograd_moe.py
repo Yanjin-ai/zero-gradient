@@ -62,6 +62,12 @@ class Config:
     time_limit_s: float = 120.0
     eval_every: int = 100
     param_gate: float = 0.0           # min resident params (4e9 on Kaggle)
+    # ---- Phase C: schedule + routing stability (no structure/vocab/readout change) ----
+    lr_min: float = 0.1               # cosine-decay floor (KAGGLE overrides to 0.003)
+    warmup_steps: int = 100
+    decay_steps: int = 8000           # cosine horizon (lr: lr -> lr_min over [warmup, decay_steps])
+    freeze_routing_step: int = 10**9  # freeze EMA prototypes after this step (KAGGLE overrides)
+    patience: int = 10**9             # early-stop after this many evals with no new best (KAGGLE overrides)
 
     @property
     def td(self): return torch.float16 if self.dtype == "float16" else torch.float32
@@ -79,7 +85,9 @@ class Config:
 # 4B Kaggle config: experts hold the bulk. 4 layers x 950 experts x (1024^2) ≈ 3.99B + heads/emb ≈ 4.15B.
 KAGGLE = Config(name="kaggle-4B", d_model=1024, vocab=32000, seq_len=64, n_layers=4, n_experts=950,
                 k_route=2, k_update=4, dtype="float16", lr=0.03, steps=10**9, time_limit_s=3*3600-300,
-                eval_every=200, param_gate=4_000_000_000)
+                eval_every=200, param_gate=4_000_000_000,
+                lr_min=0.003, warmup_steps=200, decay_steps=8000,   # Phase C: cosine 0.03->0.003 by step 8000
+                freeze_routing_step=5000, patience=8)               #  freeze routing @5k; early-stop after 8 flat evals
 
 if os.environ.get("ZG_SMOKE") == "1":                          # smoke: 4B resident, ~4 min, measure throughput/mem
     KAGGLE.steps = 150; KAGGLE.time_limit_s = 240; KAGGLE.eval_every = 25
@@ -227,6 +235,19 @@ def ce_signal(out, y, Wh, bh):
 # ====================================================================================
 # 5. TRAIN (wall-clock guard, memory tracking, zero autograd)
 # ====================================================================================
+def lr_at(cfg, step):                                          # warmup + cosine decay to lr_min
+    if step < cfg.warmup_steps: return cfg.lr * (step+1)/cfg.warmup_steps
+    p = min(1.0, (step-cfg.warmup_steps)/max(1, cfg.decay_steps-cfg.warmup_steps))
+    return cfg.lr_min + 0.5*(cfg.lr-cfg.lr_min)*(1+math.cos(math.pi*p))
+
+def route_usage(model, X, cfg, batches=6):                     # layer-0 expert usage distribution + entropy
+    counts = torch.zeros(cfg.n_experts)
+    for i in range(0, min(len(X), batches*cfg.batch_size), cfg.batch_size):
+        _, rrep = model.context(X[i:i+cfg.batch_size]); a, _ = model.route(rrep, model.C[0])
+        for e in torch.unique(a).tolist(): counts[e] += int((a == e).sum())
+    p = counts/(counts.sum()+1e-9); pe = p[p > 0]
+    return p, float(-(pe*pe.log()).sum())                      # distribution, entropy (nats)
+
 def evaluate(model, X, Y, cfg, batches=16):
     nll, n = 0.0, 0
     for i in range(0, min(len(X), batches*cfg.batch_size), cfg.batch_size):
@@ -239,11 +260,13 @@ def train(model, data, cfg):
     sched = [RoundRobin(cfg.n_experts) for _ in range(cfg.n_layers)]
     Xtr, Ytr = data["Xtr"], data["Ytr"]; t0 = time.time(); curve = []; used_autograd = torch.is_grad_enabled()
     if CUDA: torch.cuda.reset_peak_memory_stats()
+    best_ppl, best_step, no_improve, prev_usage, ckpt_hist = float("inf"), 0, 0, None, []
     step = 0
     while step < cfg.steps and time.time()-t0 < cfg.time_limit_s:
         g = torch.Generator().manual_seed(SEED+step); ix = torch.randint(0, len(Xtr), (cfg.batch_size,), generator=g)
         xb, yb = Xtr[ix], Ytr[ix]; B = xb.shape[0]
-        lrf = cfg.lr * min(1.0, (step+1)/200.0)                # linear warmup (200 steps) -> stabilizes start
+        lrf = lr_at(cfg, step)                                 # Phase C: warmup + cosine decay
+        freeze = step >= cfg.freeze_routing_step               # Phase C: freeze EMA prototypes late (routing stability)
         h, rrep = model.context(xb)
         hin, monitor = h, []
         for l in range(cfg.n_layers):
@@ -260,22 +283,36 @@ def train(model, data, cfg):
                 inp, z, mm, he = cache[e]; dz = (dh[mm]/cfg.k_route) * (z.float() > 0).float()
                 model.We[l][e] = (model.We[l][e].float() - lrf*(inp.float().T @ dz)).to(cfg.td)
                 model.be[l][e] = (model.be[l][e].float() - lrf*dz.sum(0)).to(cfg.td)
-            for e in torch.unique(assign).tolist():
-                mm = (assign == e).any(1)
-                model.C[l][e] = ((1-cfg.proto_ema)*model.C[l][e].float() + cfg.proto_ema*kk[mm].mean(0)).to(cfg.td)
+            if not freeze:                                     # routing stabilization: stop drifting prototypes late
+                for e in torch.unique(assign).tolist():
+                    mm = (assign == e).any(1)
+                    model.C[l][e] = ((1-cfg.proto_ema)*model.C[l][e].float() + cfg.proto_ema*kk[mm].mean(0)).to(cfg.td)
             hin = hl
         # embedding update (approx local credit assignment from first block)
         model.E.index_add_(0, xb[:, -1], (-lrf*dh).to(cfg.td));
         m = float(np.mean(monitor))
         if step % cfg.eval_every == 0 or step == cfg.steps-1:
             ppl = evaluate(model, data["Xval"], data["Yval"], cfg)
-            curve.append(dict(step=step, monitor=round(m, 4), val_ppl=round(ppl, 3),
-                              t=round(time.time()-t0, 1), tok_s=int((step+1)*cfg.batch_size*cfg.seq_len/(time.time()-t0+1e-9))))
-            print(f"  step {step:5d} monitor={m:.3f} val_ppl={ppl:.2f} t={time.time()-t0:.0f}s")
+            usage, ent = route_usage(model, data["Xval"], cfg)
+            drift = float(1 - torch.nn.functional.cosine_similarity(usage, prev_usage, dim=0)) if prev_usage is not None else None
+            prev_usage = usage
+            curve.append(dict(step=step, monitor=round(m, 4), val_ppl=round(ppl, 3), lr=round(lrf, 5),
+                              route_entropy=round(ent, 3), route_drift=(round(drift, 5) if drift is not None else None),
+                              frozen=bool(freeze), t=round(time.time()-t0, 1),
+                              tok_s=int((step+1)*cfg.batch_size*cfg.seq_len/(time.time()-t0+1e-9))))
+            if ppl < best_ppl - 1e-6:
+                best_ppl, best_step, no_improve = ppl, step, 0
+                ckpt_hist.append(dict(step=step, val_ppl=round(ppl, 3), t=round(time.time()-t0, 1)))
+            else: no_improve += 1
+            print(f"  step {step:5d} lr={lrf:.4f} val_ppl={ppl:.2f} best={best_ppl:.2f}@{best_step} "
+                  f"H={ent:.2f} drift={drift if drift is None else round(drift,4)} frozen={freeze} t={time.time()-t0:.0f}s")
+            if no_improve >= cfg.patience:                     # early stop -> lock near the best point t*
+                print(f"  [early-stop] no val improvement for {cfg.patience} evals; best {best_ppl:.2f}@{best_step}"); break
         step += 1
     peak = (torch.cuda.max_memory_allocated()/2**20) if CUDA else (model.num_params*(2 if cfg.dtype=='float16' else 4)/2**20)
     return dict(curve=curve, steps=step, wall_s=round(time.time()-t0, 1), peak_mem_mb=round(peak, 1),
-                final_ppl=curve[-1]["val_ppl"] if curve else None, autograd_used=bool(used_autograd))
+                final_ppl=curve[-1]["val_ppl"] if curve else None, best_ppl=round(best_ppl, 3), best_step=best_step,
+                ckpt_history=ckpt_hist, autograd_used=bool(used_autograd))
 
 
 # ====================================================================================
@@ -319,14 +356,17 @@ def run():
         "resident params >= gate": cfg.param_count() >= cfg.param_gate,
         "zero autograd (grad disabled)": not torch.is_grad_enabled() and not res["autograd_used"],
         "monitor loss decreased": res["curve"][0]["monitor"] > res["curve"][-1]["monitor"] if len(res["curve"]) > 1 else True,
-        "val_ppl < unigram (sanity)": (res["final_ppl"] or 9e9) < data["unigram_ppl"],
+        "val_ppl < unigram (sanity)": (res["best_ppl"] or 9e9) < data["unigram_ppl"],
         "deterministic (re-run identical)": det_ok,
         "BP-4B would OOM on T4 (we run)": not oom["bp_fits_t4"],
+        "no late drift (final <= 1.1x best)": (res["final_ppl"] or 9e9) <= 1.1*(res["best_ppl"] or 1),
     }
     summary = dict(config=asdict(cfg), corpus=data["corpus"], param_count=cfg.param_count(),
                    param_gigaparams=round(cfg.param_count()/1e9, 3), per_step_updated_experts=cfg.k_update*cfg.n_layers,
                    update_fraction=round(cfg.k_update/cfg.n_experts, 4), unigram_ppl=round(data["unigram_ppl"], 2),
-                   wikitext103_test_ppl=wt_ppl,
+                   wikitext103_test_ppl=wt_ppl, best_val_ppl=res["best_ppl"], best_step=res["best_step"],
+                   t_star_min=round(next((c["t"] for c in res["curve"] if c["step"] == res["best_step"]), 0)/60, 1),
+                   ckpt_history=res["ckpt_history"],
                    train=res, bp_oom=oom, gates=gates, gates_passed=int(sum(gates.values())), gates_total=len(gates),
                    ts=time.strftime("%Y-%m-%d %H:%M:%S"))
     (OUT/"run_summary.json").write_text(json.dumps(summary, indent=2, default=float))

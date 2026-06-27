@@ -16,7 +16,12 @@
     "proto_ema": 0.05,
     "time_limit_s": 120.0,
     "eval_every": 100,
-    "param_gate": 0.0
+    "param_gate": 0.0,
+    "lr_min": 0.1,
+    "warmup_steps": 100,
+    "decay_steps": 8000,
+    "freeze_routing_step": 1000000000,
+    "patience": 1000000000
   },
   "corpus": "synthetic(local)",
   "param_count": 3167040,
@@ -25,62 +30,169 @@
   "update_fraction": 0.0833,
   "unigram_ppl": 20.13,
   "wikitext103_test_ppl": null,
+  "best_val_ppl": 6.251,
+  "best_step": 599,
+  "t_star_min": 0.1,
+  "ckpt_history": [
+    {
+      "step": 0,
+      "val_ppl": 36.038,
+      "t": 0.1
+    },
+    {
+      "step": 100,
+      "val_ppl": 22.2,
+      "t": 0.6
+    },
+    {
+      "step": 200,
+      "val_ppl": 12.959,
+      "t": 1.1
+    },
+    {
+      "step": 300,
+      "val_ppl": 9.678,
+      "t": 1.5
+    },
+    {
+      "step": 400,
+      "val_ppl": 7.88,
+      "t": 2.0
+    },
+    {
+      "step": 500,
+      "val_ppl": 6.864,
+      "t": 2.5
+    },
+    {
+      "step": 599,
+      "val_ppl": 6.251,
+      "t": 3.0
+    }
+  ],
   "train": {
     "curve": [
       {
         "step": 0,
         "monitor": 3.5852,
-        "val_ppl": 36.04,
+        "val_ppl": 36.038,
+        "lr": 0.001,
+        "route_entropy": 3.212,
+        "route_drift": null,
+        "frozen": false,
         "t": 0.1,
-        "tok_s": 12841
+        "tok_s": 13029
       },
       {
         "step": 100,
-        "monitor": 3.4146,
-        "val_ppl": 27.964,
-        "t": 0.5,
-        "tok_s": 188961
+        "monitor": 3.2648,
+        "val_ppl": 22.2,
+        "lr": 0.1,
+        "route_entropy": 3.132,
+        "route_drift": 0.05391,
+        "frozen": false,
+        "t": 0.6,
+        "tok_s": 179790
       },
       {
         "step": 200,
-        "monitor": 2.6378,
-        "val_ppl": 15.938,
-        "t": 1.0,
-        "tok_s": 204909
+        "monitor": 2.3744,
+        "val_ppl": 12.959,
+        "lr": 0.1,
+        "route_entropy": 3.112,
+        "route_drift": 0.04563,
+        "frozen": false,
+        "t": 1.1,
+        "tok_s": 194170
       },
       {
         "step": 300,
-        "monitor": 2.4466,
-        "val_ppl": 11.032,
+        "monitor": 2.3073,
+        "val_ppl": 9.678,
+        "lr": 0.1,
+        "route_entropy": 3.13,
+        "route_drift": 0.00971,
+        "frozen": false,
         "t": 1.5,
-        "tok_s": 209616
+        "tok_s": 199605
       },
       {
         "step": 400,
-        "monitor": 2.4445,
-        "val_ppl": 8.652,
-        "t": 1.9,
-        "tok_s": 213147
+        "monitor": 2.3412,
+        "val_ppl": 7.88,
+        "lr": 0.1,
+        "route_entropy": 3.131,
+        "route_drift": 0.00456,
+        "frozen": false,
+        "t": 2.0,
+        "tok_s": 203516
       },
       {
         "step": 500,
-        "monitor": 2.4957,
-        "val_ppl": 7.313,
-        "t": 2.4,
-        "tok_s": 215317
+        "monitor": 2.4355,
+        "val_ppl": 6.864,
+        "lr": 0.1,
+        "route_entropy": 3.132,
+        "route_drift": 0.0029,
+        "frozen": false,
+        "t": 2.5,
+        "tok_s": 205853
       },
       {
         "step": 599,
-        "monitor": 2.0856,
-        "val_ppl": 6.534,
-        "t": 2.8,
-        "tok_s": 217244
+        "monitor": 2.0402,
+        "val_ppl": 6.251,
+        "lr": 0.1,
+        "route_entropy": 3.132,
+        "route_drift": 0.00101,
+        "frozen": false,
+        "t": 3.0,
+        "tok_s": 207682
       }
     ],
     "steps": 600,
-    "wall_s": 2.8,
+    "wall_s": 3.0,
     "peak_mem_mb": 12.1,
-    "final_ppl": 6.534,
+    "final_ppl": 6.251,
+    "best_ppl": 6.251,
+    "best_step": 599,
+    "ckpt_history": [
+      {
+        "step": 0,
+        "val_ppl": 36.038,
+        "t": 0.1
+      },
+      {
+        "step": 100,
+        "val_ppl": 22.2,
+        "t": 0.6
+      },
+      {
+        "step": 200,
+        "val_ppl": 12.959,
+        "t": 1.1
+      },
+      {
+        "step": 300,
+        "val_ppl": 9.678,
+        "t": 1.5
+      },
+      {
+        "step": 400,
+        "val_ppl": 7.88,
+        "t": 2.0
+      },
+      {
+        "step": 500,
+        "val_ppl": 6.864,
+        "t": 2.5
+      },
+      {
+        "step": 599,
+        "val_ppl": 6.251,
+        "t": 3.0
+      }
+    ],
     "autograd_used": false
   },
   "bp_oom": {
@@ -95,9 +207,10 @@
     "monitor loss decreased": true,
     "val_ppl < unigram (sanity)": true,
     "deterministic (re-run identical)": true,
-    "BP-4B would OOM on T4 (we run)": false
+    "BP-4B would OOM on T4 (we run)": false,
+    "no late drift (final <= 1.1x best)": true
   },
-  "gates_passed": 5,
-  "gates_total": 6,
-  "ts": "2026-06-27 01:44:51"
+  "gates_passed": 6,
+  "gates_total": 7,
+  "ts": "2026-06-27 17:24:42"
 }
