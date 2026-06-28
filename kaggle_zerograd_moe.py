@@ -71,6 +71,10 @@ class Config:
     decay_steps: int = 8000           # cosine horizon (lr: lr -> lr_min over [warmup, decay_steps])
     freeze_routing_step: int = 10**9  # freeze EMA prototypes after this step (KAGGLE overrides)
     patience: int = 10**9             # early-stop after this many evals with no new best (KAGGLE overrides)
+    # ---- Track A (A1): trainable attention (Wq/Wk via block-0 readout signal, closed-form, zero autograd) ----
+    attn_train: bool = False          # OFF by default -> current submission unchanged; ZG_ATTN=1 enables
+    attn_lr_scale: float = 0.1        # A3: attention lr = main lr * this (small, avoids fighting EMA routing)
+    attn_train_wk: bool = True        # A4 fallback: set False to train Wq only (Wk stays frozen)
 
     @property
     def td(self): return torch.float16 if self.dtype == "float16" else torch.float32
@@ -101,6 +105,9 @@ CONFIG = KAGGLE if (ON_KAGGLE and CUDA) else Config()          # auto-pick; flip
 if os.environ.get("ZG_TOKENIZER"): CONFIG.tokenizer = os.environ["ZG_TOKENIZER"]   # Phase D: "bpe"
 if os.environ.get("ZG_HEAD"): CONFIG.head = os.environ["ZG_HEAD"]                  # Phase D-1: "mlp"
 if os.environ.get("ZG_AUX"): CONFIG.aux_w = float(os.environ["ZG_AUX"])            # Phase D-2: e.g. 0.3
+if os.environ.get("ZG_ATTN"): CONFIG.attn_train = os.environ["ZG_ATTN"] == "1"    # Track A: trainable attention
+if os.environ.get("ZG_ATTN_LR"): CONFIG.attn_lr_scale = float(os.environ["ZG_ATTN_LR"])  # A3: attn lr scale
+if os.environ.get("ZG_ATTN_WK"): CONFIG.attn_train_wk = os.environ["ZG_ATTN_WK"] == "1"  # A4: 0 -> train Wq only
 DEVICE = torch.device("cuda:0" if CUDA else "cpu")
 DT = CONFIG.td
 
@@ -191,7 +198,7 @@ class ZeroGradMoE:
             self.Ha = w(d, V, sc=1/math.sqrt(d)); self.bHa = torch.zeros(V, dtype=cfg.td, device=DEVICE)
         self.num_params = cfg.param_count()
 
-    def context(self, x):
+    def context(self, x, cache=None):
         T = x.shape[1]; emb = self.E[x] + self.pos[:T].unsqueeze(0)
         q = emb @ self.Wq; k = emb @ self.Wk
         sc = (q.float() @ k.float().transpose(1, 2)) / math.sqrt(emb.shape[-1])
@@ -199,7 +206,27 @@ class ZeroGradMoE:
         att = torch.softmax(sc.masked_fill(m, float("-inf")), -1).to(emb.dtype)
         pm = (x != 0).float().unsqueeze(-1)
         rrep = ((emb.float()*pm).sum(1)/(pm.sum(1)+1e-6)).to(emb.dtype)                     # content routing rep
+        if cache is not None: cache.update(emb=emb, att=att, q=q, k=k)                      # Track A: for attn local rule
         return (emb + att @ emb)[:, -1], rrep
+
+    def attn_update(self, cache, dh0, lr):
+        """Track A (A1): train frozen attention Wq/Wk from block-0 readout signal dh0 = d(loss)/d(h_L),
+        the context output (last query position L). Closed-form single-step local credit, ZERO autograd
+        (same approximation class as the embedding update). h_L = emb_L + Σ_j att_Lj·emb_j.
+        Returns ||ΔWq||+||ΔWk|| for monitoring."""
+        emb, att, q, k = cache["emb"].float(), cache["att"].float(), cache["q"].float(), cache["k"].float()
+        d = emb.shape[-1]; sd = math.sqrt(d)
+        attL, qL, embL, dh = att[:, -1, :], q[:, -1, :], emb[:, -1, :], dh0.float()         # last query position
+        g = torch.einsum('bd,btd->bt', dh, emb)                                             # ∂loss/∂att_Lj = dh·emb_j
+        s = attL * (g - (attL*g).sum(-1, keepdim=True))                                     # softmax jacobian -> ∂loss/∂sc_Lj
+        dqL = torch.einsum('bt,btd->bd', s, k) / sd                                         # ∂loss/∂q_L
+        dk = s.unsqueeze(-1) * qL.unsqueeze(1) / sd                                         # ∂loss/∂k_j  [B,T,d]
+        dWq = embL.T @ dqL                                                                  # [d,d]
+        dWk = torch.einsum('btd,bte->de', emb, dk)                                          # [d,d]
+        self.Wq = (self.Wq.float() - lr*dWq).to(self.cfg.td)
+        if self.cfg.attn_train_wk:                                                          # A4: optionally keep Wk frozen
+            self.Wk = (self.Wk.float() - lr*dWk).to(self.cfg.td)
+        return float(dWq.norm() + (dWk.norm() if self.cfg.attn_train_wk else 0.0))
 
     def route(self, rrep, Cl):                                 # EMA-prototype nearest-neighbor + capacity
         kk = (rrep.float()); kk = kk @ self.P.float(); kk = kk/(kk.norm(dim=-1, keepdim=True)+1e-6)
@@ -312,8 +339,8 @@ def train(model, data, cfg):
         xb, yb = Xtr[ix], Ytr[ix]; B = xb.shape[0]; yb2 = data["Y2tr"][ix] if cfg.aux_w > 0 else None
         lrf = lr_at(cfg, step)                                 # Phase C: warmup + cosine decay
         freeze = step >= cfg.freeze_routing_step               # Phase C: freeze EMA prototypes late (routing stability)
-        h, rrep = model.context(xb)
-        hin, monitor = h, []
+        actx = {} if cfg.attn_train else None; h, rrep = model.context(xb, actx)
+        hin, monitor, dh0 = h, [], None
         for l in range(cfg.n_layers):
             assign, kk = model.route(rrep, model.C[l])
             cache = {}; moe = torch.zeros_like(hin)
@@ -322,6 +349,7 @@ def train(model, data, cfg):
                 moe[mm] = moe[mm] + he; cache[e] = (inp, z, mm, he)
             hl = hin + moe/cfg.k_route
             loss, dh, upd = model.readout(l, hl, yb); monitor.append(loss)
+            if l == 0: dh0 = dh                                # Track A: block-0 readout signal -> context output h
             model.Hb[l] = (model.Hb[l].float() - lrf*upd["Hb"]).to(cfg.td); model.bH[l] = (model.bH[l].float() - lrf*upd["bH"]).to(cfg.td)
             if cfg.head == "mlp":
                 model.Hh1[l] = (model.Hh1[l].float() - lrf*upd["Hh1"]).to(cfg.td); model.bh1[l] = (model.bh1[l].float() - lrf*upd["bh1"]).to(cfg.td)
@@ -342,6 +370,7 @@ def train(model, data, cfg):
             hin = hl
         # embedding update (approx local credit assignment from first block)
         model.E.index_add_(0, xb[:, -1], (-lrf*dh).to(cfg.td));
+        attn_dw = model.attn_update(actx, dh0, lrf*cfg.attn_lr_scale) if cfg.attn_train else None  # Track A
         m = float(np.mean(monitor))
         if step % cfg.eval_every == 0 or step == cfg.steps-1:
             ppl = evaluate(model, data["Xval"], data["Yval"], cfg)
@@ -350,6 +379,7 @@ def train(model, data, cfg):
             prev_usage = usage
             curve.append(dict(step=step, monitor=round(m, 4), val_ppl=round(ppl, 3), lr=round(lrf, 5),
                               route_entropy=round(ent, 3), route_drift=(round(drift, 5) if drift is not None else None),
+                              attn_dw=(round(attn_dw, 5) if attn_dw is not None else None),   # Track A monitor
                               frozen=bool(freeze), t=round(time.time()-t0, 1),
                               tok_s=int((step+1)*cfg.batch_size*cfg.seq_len/(time.time()-t0+1e-9))))
             if ppl < best_ppl - 1e-6:
