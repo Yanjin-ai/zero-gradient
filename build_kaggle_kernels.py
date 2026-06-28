@@ -66,9 +66,10 @@ ad.cells = [
     wf("kaggle_zerograd_moe.py"), wf("c1_4b.py"), wf("adapt_4b.py"),
     nbf.v4.new_code_cell(
         "import os, json\n"
-        "os.environ.setdefault('ZG_ADAPT_STEPS', '300')    # near a moderate adaptation point\n"
-        "os.environ.setdefault('ZG_ADAPT_LR', '0.02')      # < pretrain 0.03; limits forgetting\n"
-        "os.environ.setdefault('ZG_ADAPT_REPLAY', '0.3')   # mix 30% WikiText to anchor the original domain\n"
+        "os.environ.setdefault('ZG_ADAPT_STEPS', '300')         # moderate adaptation budget\n"
+        "os.environ.setdefault('ZG_ADAPT_LR', '0.02')           # < pretrain 0.03\n"
+        "os.environ.setdefault('ZG_ADAPT_REPLAY', '0.3')        # 30% WikiText replay\n"
+        "os.environ.setdefault('ZG_ADAPT_FREEZE_HEADS', '1')    # 2.1 mitigation: protect the LM head (cut forgetting)\n"
         "os.environ.setdefault('ZG_C1_STEPS', '1000')\n"
         "import adapt_4b\n"
         "print(json.dumps(adapt_4b.main(), indent=2, default=float))"),

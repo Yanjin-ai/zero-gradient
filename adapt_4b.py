@@ -20,6 +20,8 @@ SEED = Z.SEED
 ADAPT_STEPS = int(os.environ.get("ZG_ADAPT_STEPS", 150))
 ADAPT_LR = float(os.environ.get("ZG_ADAPT_LR", 0.005))
 REPLAY = float(os.environ.get("ZG_ADAPT_REPLAY", 0.5))         # fraction of adaptation tokens drawn from WikiText
+FREEZE_HEADS = os.environ.get("ZG_ADAPT_FREEZE_HEADS", "0") == "1"  # 2.1 mitigation: protect the LM head
+BB_SCALE = float(os.environ.get("ZG_ADAPT_BB_SCALE", "1.0"))   # 2.1 mitigation: importance-weight the backbone
 HEAD_STEPS = int(os.environ.get("ZG_C1_STEPS", 1000))
 
 def sent_stream(enc, n, seed):                                 # unlabeled sentiment sentences -> LM token stream
@@ -63,8 +65,9 @@ def main():
     nval = max(64, len(Xs)//20)
     adapt = dict(corpus="sent-adapt", Xtr=Xs[nval:], Ytr=Ys[nval:], Y2tr=Ys[nval:], Xval=Xs[:nval], Yval=Ys[:nval])
     acfg = replace(cfg, steps=ADAPT_STEPS, lr=ADAPT_LR, lr_min=ADAPT_LR, warmup_steps=min(10, max(1, ADAPT_STEPS//4)),
-                   eval_every=max(1, ADAPT_STEPS), patience=10**9, freeze_routing_step=0, save_ckpt=False, time_limit_s=3600)
-    print(f"  [adapt] {ADAPT_STEPS} steps, lr={ADAPT_LR}, replay={REPLAY}, routing frozen")
+                   eval_every=max(1, ADAPT_STEPS), patience=10**9, freeze_routing_step=0, save_ckpt=False, time_limit_s=3600,
+                   freeze_heads=FREEZE_HEADS, backbone_lr_scale=BB_SCALE)
+    print(f"  [adapt] {ADAPT_STEPS} steps, lr={ADAPT_LR}, replay={REPLAY}, routing frozen, freeze_heads={FREEZE_HEADS}, bb_scale={BB_SCALE}")
     Z.train(model, adapt, acfg)                                # in-domain zero-BP LM adaptation (in place)
 
     ppl_after = Z.evaluate(model, Xlm, Ylm, cfg, batches=10**9)
@@ -73,7 +76,8 @@ def main():
 
     summary = dict(checkpoint=str(ck), config=cfg.name, param_gigaparams=round(cfg.param_count()/1e9, 3),
                    corpus=data["corpus"], task="compositional-sentiment", majority_baseline=round(maj, 3),
-                   adapt_steps=ADAPT_STEPS, adapt_lr=ADAPT_LR, replay_frac=REPLAY, head_train_steps=HEAD_STEPS,
+                   adapt_steps=ADAPT_STEPS, adapt_lr=ADAPT_LR, replay_frac=REPLAY, freeze_heads=FREEZE_HEADS,
+                   backbone_lr_scale=BB_SCALE, head_train_steps=HEAD_STEPS,
                    zeroshot_acc=round(acc_zeroshot, 4), adapted_acc=round(acc_adapted, 4), adapted_acc_negated=round(acc_neg, 4),
                    wiki_ppl_before=round(ppl_before, 3), wiki_ppl_after=round(ppl_after, 3),
                    forgetting_dppl=round(ppl_after-ppl_before, 3),

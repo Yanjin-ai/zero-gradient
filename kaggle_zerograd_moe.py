@@ -77,6 +77,9 @@ class Config:
     attn_train_wk: bool = True        # A4 fallback: set False to train Wq only (Wk stays frozen)
     # ---- C.1 prep: persist the best checkpoint so post-training can seed from a stable model ----
     save_ckpt: bool = False           # ZG_CKPT=1 -> write best_ckpt.pt on each new best (off by default)
+    # ---- v1.1 adaptation mitigation (default no-op -> submission byte-identical) ----
+    freeze_heads: bool = False        # skip readout/LM-head updates during adaptation (protect the LM head)
+    backbone_lr_scale: float = 1.0    # scale expert+embedding updates (importance weighting; 0 = head-only)
 
     @property
     def td(self): return torch.float16 if self.dtype == "float16" else torch.float32
@@ -380,26 +383,28 @@ def train(model, data, cfg, out_dir=None):
             hl = hin + moe/cfg.k_route
             loss, dh, upd = model.readout(l, hl, yb); monitor.append(loss)
             if l == 0: dh0 = dh                                # Track A: block-0 readout signal -> context output h
-            model.Hb[l] = (model.Hb[l].float() - lrf*upd["Hb"]).to(cfg.td); model.bH[l] = (model.bH[l].float() - lrf*upd["bH"]).to(cfg.td)
-            if cfg.head == "mlp":
-                model.Hh1[l] = (model.Hh1[l].float() - lrf*upd["Hh1"]).to(cfg.td); model.bh1[l] = (model.bh1[l].float() - lrf*upd["bh1"]).to(cfg.td)
+            if not cfg.freeze_heads:                           # v1.1: optionally protect the LM head during adaptation
+                model.Hb[l] = (model.Hb[l].float() - lrf*upd["Hb"]).to(cfg.td); model.bH[l] = (model.bH[l].float() - lrf*upd["bH"]).to(cfg.td)
+                if cfg.head == "mlp":
+                    model.Hh1[l] = (model.Hh1[l].float() - lrf*upd["Hh1"]).to(cfg.td); model.bh1[l] = (model.bh1[l].float() - lrf*upd["bh1"]).to(cfg.td)
             if cfg.aux_w > 0 and l == cfg.n_layers-1:           # Phase D-2: next-2-token aux local loss (zero autograd)
                 lga = hl.float() @ model.Ha.float() + model.bHa.float()
                 pa = torch.softmax(lga, -1); pa[torch.arange(B), yb2] -= 1.0; pa /= B
                 model.Ha = (model.Ha.float() - lrf*(hl.float().T @ pa)).to(cfg.td); model.bHa = (model.bHa.float() - lrf*pa.sum(0)).to(cfg.td)
                 dh = dh + cfg.aux_w*(pa @ model.Ha.float().T)   # enrich the representation to encode t+2
             cand = torch.tensor(sorted(cache.keys())); sel = sched[l].select(cand, cfg.k_update)
+            blr = lrf*cfg.backbone_lr_scale                    # v1.1: importance weighting on backbone (1.0 = no-op)
             for e in sel:
                 inp, z, mm, he = cache[e]; dz = (dh[mm]/cfg.k_route) * (z.float() > 0).float()
-                model.We[l][e] = (model.We[l][e].float() - lrf*(inp.float().T @ dz)).to(cfg.td)
-                model.be[l][e] = (model.be[l][e].float() - lrf*dz.sum(0)).to(cfg.td)
+                model.We[l][e] = (model.We[l][e].float() - blr*(inp.float().T @ dz)).to(cfg.td)
+                model.be[l][e] = (model.be[l][e].float() - blr*dz.sum(0)).to(cfg.td)
             if not freeze:                                     # routing stabilization: stop drifting prototypes late
                 for e in torch.unique(assign).tolist():
                     mm = (assign == e).any(1)
                     model.C[l][e] = ((1-cfg.proto_ema)*model.C[l][e].float() + cfg.proto_ema*kk[mm].mean(0)).to(cfg.td)
             hin = hl
         # embedding update (approx local credit assignment from first block)
-        model.E.index_add_(0, xb[:, -1], (-lrf*dh).to(cfg.td));
+        model.E.index_add_(0, xb[:, -1], (-lrf*cfg.backbone_lr_scale*dh).to(cfg.td));
         attn_dw = model.attn_update(actx, dh0, lrf*cfg.attn_lr_scale) if cfg.attn_train else None  # Track A
         m = float(np.mean(monitor))
         if step % cfg.eval_every == 0 or step == cfg.steps-1:
