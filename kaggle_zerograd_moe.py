@@ -88,6 +88,7 @@ class Config:
 KAGGLE = Config(name="kaggle-4B", d_model=1024, vocab=32000, seq_len=64, n_layers=4, n_experts=950,
                 k_route=2, k_update=4, dtype="float16", lr=0.03, steps=10**9, time_limit_s=3*3600-300,
                 eval_every=200, param_gate=4_000_000_000,
+                tokenizer="bpe", head="mlp",                        # best config (Phase D-1): subword + 2-layer head
                 lr_min=0.003, warmup_steps=200, decay_steps=8000,   # Phase C: cosine 0.03->0.003 by step 8000
                 freeze_routing_step=5000, patience=8)               #  freeze routing @5k; early-stop after 8 flat evals
 
