@@ -18,9 +18,10 @@ from datetime import datetime, timezone
 ROOT = Path(__file__).parent
 (ROOT/"runs").mkdir(exist_ok=True)
 LEDGER = ROOT/"runs"/"experiments.jsonl"; LOG = ROOT/"runs"/"orchestrator.log"
-CKPT_DIR, C1_DIR = ROOT/"kaggle_ckpt", ROOT/"kaggle_c1"
+CKPT_DIR, C1_DIR, ADAPT_DIR = ROOT/"kaggle_ckpt", ROOT/"kaggle_c1", ROOT/"kaggle_adapt"
 CKPT_REF = "yanjinli2001/post-backprop-zerograd-4b-checkpoint"
 C1_REF = "yanjinli2001/post-backprop-zerograd-c1"
+ADAPT_REF = "yanjinli2001/post-backprop-zerograd-adapt"
 DONE = ("complete", "error", "cancelacknowledged", "cancelrequested")
 ACTIVE = ("running", "queued")
 
@@ -81,6 +82,21 @@ def stage_c1():
         record({"stage": "c1", "event": "metrics", "metrics": d}); log("C1 RESULT: " + json.dumps(d, default=float))
     return True
 
+def stage_adapt():
+    st, _ = status(ADAPT_REF)
+    if st == "complete": log("adapt already complete; pulling")
+    elif st in ACTIVE: log(f"adapt already {st}; skip push, just wait")
+    else:
+        record({"stage": "adapt", "event": "push", "ref": ADAPT_REF})
+        if not push(ADAPT_DIR): record({"stage": "adapt", "event": "push_failed"}); return False
+    st = wait(ADAPT_REF, "adapt", timeout_s=6000); record({"stage": "adapt", "event": "finished", "status": st})
+    if st != "complete": return False
+    out = ADAPT_DIR/"out"
+    if pull(ADAPT_REF, out) and (out/"adapt_run_summary.json").exists():
+        d = json.loads((out/"adapt_run_summary.json").read_text())
+        record({"stage": "adapt", "event": "metrics", "metrics": d}); log("ADAPT RESULT: " + json.dumps(d, default=float))
+    return True
+
 if __name__ == "__main__":
     stages = [s for s in sys.argv[1:]] or ["ckpt", "c1"]
     log(f"orchestrator start: stages={stages}")
@@ -88,4 +104,5 @@ if __name__ == "__main__":
         log("NO KAGGLE CREDENTIALS — put kaggle.json in ~/.kaggle/ or set KAGGLE_USERNAME/KAGGLE_KEY"); sys.exit(2)
     if "ckpt" in stages and not stage_ckpt(): log("ckpt stage did not complete; stopping"); sys.exit(1)
     if "c1" in stages and not stage_c1(): log("c1 stage did not complete"); sys.exit(1)
+    if "adapt" in stages and not stage_adapt(): log("adapt stage did not complete"); sys.exit(1)
     log("orchestrator done")
