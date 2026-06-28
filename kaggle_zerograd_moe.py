@@ -57,6 +57,7 @@ class Config:
     dtype: str = "float32"
     tokenizer: str = "word"           # "word" | "bpe" (Phase D: offline-trained ByteLevel BPE subword)
     head: str = "linear"              # "linear" | "mlp" (Phase D-1: 2-layer readout head, hand-derived, no autograd)
+    aux_w: float = 0.0                # Phase D-2: weight of next-2-token auxiliary local loss (>0 enables)
     steps: int = 600
     batch_size: int = 64
     lr: float = 0.1
@@ -80,7 +81,7 @@ class Config:
         attn = 2*d*d
         proto = self.n_layers*self.n_experts*max(32, d//4)
         experts = self.n_layers*self.n_experts*(d*d + d)
-        heads = self.n_layers*(d*V + V) + (self.n_layers*(d*d + d) if self.head == "mlp" else 0)
+        heads = self.n_layers*(d*V + V) + (self.n_layers*(d*d + d) if self.head == "mlp" else 0) + (d*V + V if self.aux_w > 0 else 0)
         return emb + attn + proto + experts + heads
 
 
@@ -99,6 +100,7 @@ elif os.environ.get("ZG_RUN_MIN"):                             # real run with a
 CONFIG = KAGGLE if (ON_KAGGLE and CUDA) else Config()          # auto-pick; flip manually if needed
 if os.environ.get("ZG_TOKENIZER"): CONFIG.tokenizer = os.environ["ZG_TOKENIZER"]   # Phase D: "bpe"
 if os.environ.get("ZG_HEAD"): CONFIG.head = os.environ["ZG_HEAD"]                  # Phase D-1: "mlp"
+if os.environ.get("ZG_AUX"): CONFIG.aux_w = float(os.environ["ZG_AUX"])            # Phase D-2: e.g. 0.3
 DEVICE = torch.device("cuda:0" if CUDA else "cpu")
 DT = CONFIG.td
 
@@ -145,19 +147,19 @@ def build_data(cfg: Config):
         test_ids = torch.tensor([stoi.get(w, 1) for w in _tok(test_text)], dtype=torch.long) if test_text is not None else None
     V = len(vocab)
     def _win(t, stride, cap):
-        Xs, Ys = [], []
-        for i in range(0, min(len(t)-cfg.seq_len-1, cap), stride):
-            Xs.append(t[i:i+cfg.seq_len]); Ys.append(t[i+cfg.seq_len])
-        return (torch.stack(Xs), torch.stack(Ys)) if Xs else (None, None)
-    X, Y = _win(ids, 3, 400000)
-    perm = torch.randperm(len(X), generator=torch.Generator().manual_seed(SEED)); X, Y = X[perm], Y[perm]
+        Xs, Ys, Y2s = [], [], []
+        for i in range(0, min(len(t)-cfg.seq_len-2, cap), stride):
+            Xs.append(t[i:i+cfg.seq_len]); Ys.append(t[i+cfg.seq_len]); Y2s.append(t[i+cfg.seq_len+1])
+        return (torch.stack(Xs), torch.stack(Ys), torch.stack(Y2s)) if Xs else (None, None, None)
+    X, Y, Y2 = _win(ids, 3, 400000)
+    perm = torch.randperm(len(X), generator=torch.Generator().manual_seed(SEED)); X, Y, Y2 = X[perm], Y[perm], Y2[perm]
     nval = max(256, len(X)//20)
     d = dict(corpus=corpus + "/" + cfg.tokenizer, vocab=vocab, Xtr=X[nval:].to(DEVICE), Ytr=Y[nval:].to(DEVICE),
-             Xval=X[:nval].to(DEVICE), Yval=Y[:nval].to(DEVICE))
+             Y2tr=Y2[nval:].to(DEVICE), Xval=X[:nval].to(DEVICE), Yval=Y[:nval].to(DEVICE))
     cnt = torch.bincount(d["Ytr"], minlength=V).float()+1e-6; p = cnt/cnt.sum()
     d["unigram_ppl"] = float(torch.exp(-(p[d["Yval"]].log()).mean()))
     if test_ids is not None:                                    # official WikiText-103 test split
-        Xt, Yt = _win(test_ids, cfg.seq_len, 10**9)
+        Xt, Yt, _ = _win(test_ids, cfg.seq_len, 10**9)
         if Xt is not None: d["Xtest"] = Xt[:3000].to(DEVICE); d["Ytest"] = Yt[:3000].to(DEVICE)
     return d
 
@@ -185,6 +187,8 @@ class ZeroGradMoE:
         if cfg.head == "mlp":                                                              # Phase D-1: 2-layer readout head
             self.Hh1 = [w(d, d, sc=1/math.sqrt(d)) for _ in range(cfg.n_layers)]
             self.bh1 = [torch.zeros(d, dtype=cfg.td, device=DEVICE) for _ in range(cfg.n_layers)]
+        if cfg.aux_w > 0:                                                                  # Phase D-2: next-2-token aux head
+            self.Ha = w(d, V, sc=1/math.sqrt(d)); self.bHa = torch.zeros(V, dtype=cfg.td, device=DEVICE)
         self.num_params = cfg.param_count()
 
     def context(self, x):
@@ -305,7 +309,7 @@ def train(model, data, cfg):
     step = 0
     while step < cfg.steps and time.time()-t0 < cfg.time_limit_s:
         g = torch.Generator().manual_seed(SEED+step); ix = torch.randint(0, len(Xtr), (cfg.batch_size,), generator=g)
-        xb, yb = Xtr[ix], Ytr[ix]; B = xb.shape[0]
+        xb, yb = Xtr[ix], Ytr[ix]; B = xb.shape[0]; yb2 = data["Y2tr"][ix] if cfg.aux_w > 0 else None
         lrf = lr_at(cfg, step)                                 # Phase C: warmup + cosine decay
         freeze = step >= cfg.freeze_routing_step               # Phase C: freeze EMA prototypes late (routing stability)
         h, rrep = model.context(xb)
@@ -321,6 +325,11 @@ def train(model, data, cfg):
             model.Hb[l] = (model.Hb[l].float() - lrf*upd["Hb"]).to(cfg.td); model.bH[l] = (model.bH[l].float() - lrf*upd["bH"]).to(cfg.td)
             if cfg.head == "mlp":
                 model.Hh1[l] = (model.Hh1[l].float() - lrf*upd["Hh1"]).to(cfg.td); model.bh1[l] = (model.bh1[l].float() - lrf*upd["bh1"]).to(cfg.td)
+            if cfg.aux_w > 0 and l == cfg.n_layers-1:           # Phase D-2: next-2-token aux local loss (zero autograd)
+                lga = hl.float() @ model.Ha.float() + model.bHa.float()
+                pa = torch.softmax(lga, -1); pa[torch.arange(B), yb2] -= 1.0; pa /= B
+                model.Ha = (model.Ha.float() - lrf*(hl.float().T @ pa)).to(cfg.td); model.bHa = (model.bHa.float() - lrf*pa.sum(0)).to(cfg.td)
+                dh = dh + cfg.aux_w*(pa @ model.Ha.float().T)   # enrich the representation to encode t+2
             cand = torch.tensor(sorted(cache.keys())); sel = sched[l].select(cand, cfg.k_update)
             for e in sel:
                 inp, z, mm, he = cache[e]; dz = (dh[mm]/cfg.k_route) * (z.float() > 0).float()
