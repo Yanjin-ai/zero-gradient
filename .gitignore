@@ -2,3 +2,5 @@
 ._*
 .claude/
 __pycache__/
+
+*.pt

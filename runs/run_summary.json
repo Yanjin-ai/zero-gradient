@@ -10,9 +10,9 @@
     "k_update": 4,
     "capacity_factor": 2.0,
     "dtype": "float32",
-    "tokenizer": "bpe",
-    "head": "mlp",
-    "aux_w": 0.5,
+    "tokenizer": "word",
+    "head": "linear",
+    "aux_w": 0.0,
     "steps": 600,
     "batch_size": 64,
     "lr": 0.1,
@@ -24,173 +24,194 @@
     "warmup_steps": 100,
     "decay_steps": 8000,
     "freeze_routing_step": 1000000000,
-    "patience": 1000000000
+    "patience": 1000000000,
+    "attn_train": false,
+    "attn_lr_scale": 0.1,
+    "attn_train_wk": true,
+    "save_ckpt": false
   },
-  "corpus": "synthetic(local)/bpe",
-  "param_count": 3716064,
-  "param_gigaparams": 0.004,
+  "corpus": "synthetic(local)/word",
+  "param_count": 3167040,
+  "param_gigaparams": 0.003,
   "per_step_updated_experts": 8,
   "update_fraction": 0.0833,
-  "unigram_ppl": 18.63,
+  "unigram_ppl": 20.13,
   "wikitext103_test_ppl": null,
-  "best_val_ppl": 6.645,
-  "best_step": 500,
-  "t_star_min": 0.0,
+  "best_val_ppl": 6.251,
+  "best_step": 599,
+  "t_star_min": 0.1,
   "ckpt_history": [
     {
       "step": 0,
-      "val_ppl": 159.012,
+      "val_ppl": 36.038,
       "t": 0.1
     },
     {
       "step": 100,
-      "val_ppl": 52.505,
+      "val_ppl": 22.2,
       "t": 0.6
     },
     {
       "step": 200,
-      "val_ppl": 9.853,
-      "t": 1.2
+      "val_ppl": 12.959,
+      "t": 1.1
     },
     {
       "step": 300,
-      "val_ppl": 7.339,
-      "t": 1.7
+      "val_ppl": 9.678,
+      "t": 1.6
     },
     {
       "step": 400,
-      "val_ppl": 6.951,
-      "t": 2.3
+      "val_ppl": 7.88,
+      "t": 2.0
     },
     {
       "step": 500,
-      "val_ppl": 6.645,
-      "t": 2.8
+      "val_ppl": 6.864,
+      "t": 2.5
+    },
+    {
+      "step": 599,
+      "val_ppl": 6.251,
+      "t": 3.0
     }
   ],
   "train": {
     "curve": [
       {
         "step": 0,
-        "monitor": 5.0682,
-        "val_ppl": 159.012,
+        "monitor": 3.5852,
+        "val_ppl": 36.038,
         "lr": 0.001,
-        "route_entropy": 3.215,
+        "route_entropy": 3.212,
         "route_drift": null,
+        "attn_dw": null,
         "frozen": false,
         "t": 0.1,
-        "tok_s": 12377
+        "tok_s": 11979
       },
       {
         "step": 100,
-        "monitor": 4.1641,
-        "val_ppl": 52.505,
+        "monitor": 3.2648,
+        "val_ppl": 22.2,
         "lr": 0.1,
-        "route_entropy": 3.126,
-        "route_drift": 0.05979,
+        "route_entropy": 3.132,
+        "route_drift": 0.05391,
+        "attn_dw": null,
         "frozen": false,
         "t": 0.6,
-        "tok_s": 163583
+        "tok_s": 178455
       },
       {
         "step": 200,
-        "monitor": 2.4736,
-        "val_ppl": 9.853,
+        "monitor": 2.3744,
+        "val_ppl": 12.959,
         "lr": 0.1,
-        "route_entropy": 3.089,
-        "route_drift": 0.01468,
+        "route_entropy": 3.112,
+        "route_drift": 0.04563,
+        "attn_dw": null,
         "frozen": false,
-        "t": 1.2,
-        "tok_s": 170901
+        "t": 1.1,
+        "tok_s": 193953
       },
       {
         "step": 300,
-        "monitor": 1.942,
-        "val_ppl": 7.339,
+        "monitor": 2.3073,
+        "val_ppl": 9.678,
         "lr": 0.1,
-        "route_entropy": 3.095,
-        "route_drift": 0.00223,
+        "route_entropy": 3.13,
+        "route_drift": 0.00971,
+        "attn_dw": null,
         "frozen": false,
-        "t": 1.7,
-        "tok_s": 177061
+        "t": 1.6,
+        "tok_s": 196406
       },
       {
         "step": 400,
-        "monitor": 2.029,
-        "val_ppl": 6.951,
+        "monitor": 2.3412,
+        "val_ppl": 7.88,
         "lr": 0.1,
-        "route_entropy": 3.089,
-        "route_drift": 0.00171,
+        "route_entropy": 3.131,
+        "route_drift": 0.00456,
+        "attn_dw": null,
         "frozen": false,
-        "t": 2.3,
-        "tok_s": 180047
+        "t": 2.0,
+        "tok_s": 200564
       },
       {
         "step": 500,
-        "monitor": 1.8948,
-        "val_ppl": 6.645,
+        "monitor": 2.4355,
+        "val_ppl": 6.864,
         "lr": 0.1,
-        "route_entropy": 3.09,
-        "route_drift": 0.00134,
+        "route_entropy": 3.132,
+        "route_drift": 0.0029,
+        "attn_dw": null,
         "frozen": false,
-        "t": 2.8,
-        "tok_s": 182512
+        "t": 2.5,
+        "tok_s": 203978
       },
       {
         "step": 599,
-        "monitor": 1.8868,
-        "val_ppl": 6.684,
+        "monitor": 2.0402,
+        "val_ppl": 6.251,
         "lr": 0.1,
-        "route_entropy": 3.089,
-        "route_drift": 0.00086,
+        "route_entropy": 3.132,
+        "route_drift": 0.00101,
+        "attn_dw": null,
         "frozen": false,
-        "t": 3.3,
-        "tok_s": 184098
+        "t": 3.0,
+        "tok_s": 206442
       }
     ],
     "steps": 600,
-    "wall_s": 3.3,
-    "peak_mem_mb": 14.2,
-    "final_ppl": 6.684,
-    "best_ppl": 6.645,
-    "best_step": 500,
+    "wall_s": 3.0,
+    "peak_mem_mb": 12.1,
+    "final_ppl": 6.251,
+    "best_ppl": 6.251,
+    "best_step": 599,
     "ckpt_history": [
       {
         "step": 0,
-        "val_ppl": 159.012,
+        "val_ppl": 36.038,
         "t": 0.1
       },
       {
         "step": 100,
-        "val_ppl": 52.505,
+        "val_ppl": 22.2,
         "t": 0.6
       },
       {
         "step": 200,
-        "val_ppl": 9.853,
-        "t": 1.2
+        "val_ppl": 12.959,
+        "t": 1.1
       },
       {
         "step": 300,
-        "val_ppl": 7.339,
-        "t": 1.7
+        "val_ppl": 9.678,
+        "t": 1.6
       },
       {
         "step": 400,
-        "val_ppl": 6.951,
-        "t": 2.3
+        "val_ppl": 7.88,
+        "t": 2.0
       },
       {
         "step": 500,
-        "val_ppl": 6.645,
-        "t": 2.8
+        "val_ppl": 6.864,
+        "t": 2.5
+      },
+      {
+        "step": 599,
+        "val_ppl": 6.251,
+        "t": 3.0
       }
     ],
     "autograd_used": false
   },
   "bp_oom": {
     "resident_fp16_GB": 0.01,
-    "bp_min_GB_weights_grads_adam": 0.03,
+    "bp_min_GB_weights_grads_adam": 0.02,
     "t4_GB": 16,
     "bp_fits_t4": true
   },
@@ -205,5 +226,5 @@
   },
   "gates_passed": 6,
   "gates_total": 7,
-  "ts": "2026-06-28 11:37:14"
+  "ts": "2026-06-28 14:06:38"
 }

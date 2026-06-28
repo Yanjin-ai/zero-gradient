@@ -75,6 +75,8 @@ class Config:
     attn_train: bool = False          # OFF by default -> current submission unchanged; ZG_ATTN=1 enables
     attn_lr_scale: float = 0.1        # A3: attention lr = main lr * this (small, avoids fighting EMA routing)
     attn_train_wk: bool = True        # A4 fallback: set False to train Wq only (Wk stays frozen)
+    # ---- C.1 prep: persist the best checkpoint so post-training can seed from a stable model ----
+    save_ckpt: bool = False           # ZG_CKPT=1 -> write best_ckpt.pt on each new best (off by default)
 
     @property
     def td(self): return torch.float16 if self.dtype == "float16" else torch.float32
@@ -108,6 +110,7 @@ if os.environ.get("ZG_AUX"): CONFIG.aux_w = float(os.environ["ZG_AUX"])         
 if os.environ.get("ZG_ATTN"): CONFIG.attn_train = os.environ["ZG_ATTN"] == "1"    # Track A: trainable attention
 if os.environ.get("ZG_ATTN_LR"): CONFIG.attn_lr_scale = float(os.environ["ZG_ATTN_LR"])  # A3: attn lr scale
 if os.environ.get("ZG_ATTN_WK"): CONFIG.attn_train_wk = os.environ["ZG_ATTN_WK"] == "1"  # A4: 0 -> train Wq only
+if os.environ.get("ZG_CKPT"): CONFIG.save_ckpt = os.environ["ZG_CKPT"] == "1"     # C.1 prep: persist best checkpoint
 DEVICE = torch.device("cuda:0" if CUDA else "cpu")
 DT = CONFIG.td
 
@@ -281,6 +284,27 @@ class ZeroGradMoE:
             dout = dhid
         return loss, dout, upd
 
+    # ---- C.1 prep: checkpoint save / reload (so a stable best model can seed post-training) ----
+    _CKPT_KEYS = ["E", "pos", "Wq", "Wk", "P", "C", "We", "be", "Hb", "bH"]
+
+    def state_dict(self):
+        keys = list(self._CKPT_KEYS)
+        if self.cfg.head == "mlp": keys += ["Hh1", "bh1"]
+        if self.cfg.aux_w > 0: keys += ["Ha", "bHa"]
+        return {k: _map_t(getattr(self, k), lambda t: t.detach().cpu().clone()) for k in keys}
+
+    def load_state_dict(self, sd):
+        for k, v in sd.items():
+            setattr(self, k, _map_t(v, lambda t: t.to(DEVICE).to(self.cfg.td)))
+        return self
+
+
+def _map_t(o, fn):                                             # recursively map a fn over tensors in nested list/dict
+    if torch.is_tensor(o): return fn(o)
+    if isinstance(o, list): return [_map_t(x, fn) for x in o]
+    if isinstance(o, dict): return {k: _map_t(v, fn) for k, v in o.items()}
+    return o
+
 
 # ====================================================================================
 # 4. LOCAL RULE (deeply-supervised closed form, no autograd) + DETERMINISTIC budget scheduler
@@ -328,11 +352,12 @@ def evaluate(model, X, Y, cfg, batches=16):
         nll += float(-lp[torch.arange(B), yb].sum()); n += B
     return math.exp(nll/n)
 
-def train(model, data, cfg):
+def train(model, data, cfg, out_dir=None):
     sched = [RoundRobin(cfg.n_experts) for _ in range(cfg.n_layers)]
     Xtr, Ytr = data["Xtr"], data["Ytr"]; t0 = time.time(); curve = []; used_autograd = torch.is_grad_enabled()
     if CUDA: torch.cuda.reset_peak_memory_stats()
     best_ppl, best_step, no_improve, prev_usage, ckpt_hist = float("inf"), 0, 0, None, []
+    ckpt_path = (Path(out_dir)/"best_ckpt.pt") if (cfg.save_ckpt and out_dir is not None) else None
     step = 0
     while step < cfg.steps and time.time()-t0 < cfg.time_limit_s:
         g = torch.Generator().manual_seed(SEED+step); ix = torch.randint(0, len(Xtr), (cfg.batch_size,), generator=g)
@@ -385,6 +410,8 @@ def train(model, data, cfg):
             if ppl < best_ppl - 1e-6:
                 best_ppl, best_step, no_improve = ppl, step, 0
                 ckpt_hist.append(dict(step=step, val_ppl=round(ppl, 3), t=round(time.time()-t0, 1)))
+                if ckpt_path is not None:                      # C.1 prep: persist best model (overwrite single file)
+                    torch.save(dict(state=model.state_dict(), cfg=asdict(cfg), step=step, val_ppl=round(ppl, 3)), ckpt_path)
             else: no_improve += 1
             print(f"  step {step:5d} lr={lrf:.4f} val_ppl={ppl:.2f} best={best_ppl:.2f}@{best_step} "
                   f"H={ent:.2f} drift={drift if drift is None else round(drift,4)} frozen={freeze} t={time.time()-t0:.0f}s")
@@ -424,7 +451,7 @@ def run():
     print(f"corpus={data['corpus']} vocab={len(data['vocab'])} train={len(data['Xtr'])} unigram_ppl={data['unigram_ppl']:.1f}")
     model = ZeroGradMoE(cfg, len(data["vocab"]))
     # re-run determinism check (small only; skip on 4B for time)
-    res = train(model, data, cfg)
+    res = train(model, data, cfg, out_dir=OUT)
     if not (ON_KAGGLE and CUDA):
         m2 = ZeroGradMoE(cfg, len(data["vocab"])); r2 = train(m2, data, cfg)
         det_ok = abs(r2["final_ppl"]-res["final_ppl"]) < 1e-6
