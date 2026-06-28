@@ -10,6 +10,9 @@ from pathlib import Path
 import nbformat as nbf
 
 root = Path(__file__).parent
+# Kaggle/papermill require a kernelspec or execution fails with "No kernel name found in notebook".
+KSPEC = {"kernelspec": {"name": "python3", "display_name": "Python 3", "language": "python"},
+         "language_info": {"name": "python", "pygments_lexer": "ipython3"}}
 def wf(fname): return nbf.v4.new_code_cell(f"%%writefile {fname}\n" + (root/fname).read_text())
 
 # ---- checkpoint kernel: 4B pretrain with ZG_CKPT=1 -> best_ckpt.pt ----
@@ -26,6 +29,7 @@ ckpt.cells = [
         "os.environ['ZG_CKPT'] = '1'                       # persist best checkpoint (save-once at end)\n"
         "runpy.run_path('kaggle_zerograd_moe.py', run_name='__main__')   # full 4B pretrain + WikiText eval + best_ckpt.pt"),
 ]
+ckpt.metadata.update(KSPEC)
 (root/"kaggle_ckpt").mkdir(exist_ok=True)
 nbf.write(ckpt, str(root/"kaggle_ckpt"/"ckpt_kernel.ipynb"))
 
@@ -47,6 +51,7 @@ c1.cells = [
         "summary = c1_4b.main()\n"
         "print(json.dumps(summary, indent=2, default=float))"),
 ]
+c1.metadata.update(KSPEC)
 (root/"kaggle_c1").mkdir(exist_ok=True)
 nbf.write(c1, str(root/"kaggle_c1"/"c1_kernel.ipynb"))
 

@@ -19,9 +19,10 @@ ROOT = Path(__file__).parent
 (ROOT/"runs").mkdir(exist_ok=True)
 LEDGER = ROOT/"runs"/"experiments.jsonl"; LOG = ROOT/"runs"/"orchestrator.log"
 CKPT_DIR, C1_DIR = ROOT/"kaggle_ckpt", ROOT/"kaggle_c1"
-CKPT_REF = "yanjinli2001/post-backprop-zerograd-ckpt"
+CKPT_REF = "yanjinli2001/post-backprop-zerograd-4b-checkpoint"
 C1_REF = "yanjinli2001/post-backprop-zerograd-c1"
-DONE = ("complete", "error", "cancelacknowledged")
+DONE = ("complete", "error", "cancelacknowledged", "cancelrequested")
+ACTIVE = ("running", "queued")
 
 def now(): return datetime.now(timezone.utc).isoformat()
 def log(m):
@@ -43,8 +44,8 @@ def check_creds():
 def push(d):
     rc, out = sh(["kaggle", "kernels", "push", "-p", str(d)]); log(f"push {d.name}: rc={rc} {out.strip()[:240]}"); return rc == 0
 def status(ref):
-    rc, out = sh(["kaggle", "kernels", "status", ref]); m = re.search(r'status\s+"?([A-Za-z]+)"?', out)
-    return (m.group(1).lower() if m else "unknown"), out
+    rc, out = sh(["kaggle", "kernels", "status", ref]); m = re.search(r'status\s+"?([\w.]+)"?', out)
+    return (m.group(1).split(".")[-1].lower() if m else "unknown"), out   # "KernelWorkerStatus.COMPLETE" -> "complete"
 def wait(ref, label, timeout_s, interval=60):
     t0 = time.time()
     while time.time() - t0 < timeout_s:
@@ -56,14 +57,22 @@ def pull(ref, d):
     d.mkdir(exist_ok=True); rc, out = sh(["kaggle", "kernels", "output", ref, "-p", str(d)]); log(f"pull {ref} rc={rc}"); return rc == 0
 
 def stage_ckpt():
-    record({"stage": "ckpt", "event": "push", "ref": CKPT_REF})
-    if not push(CKPT_DIR): record({"stage": "ckpt", "event": "push_failed"}); return False
+    st, _ = status(CKPT_REF)                                    # idempotent: don't re-push a run already in flight
+    if st == "complete": log("ckpt already complete; skip push"); return True
+    if st in ACTIVE: log(f"ckpt already {st}; skip push, just wait")
+    else:
+        record({"stage": "ckpt", "event": "push", "ref": CKPT_REF})
+        if not push(CKPT_DIR): record({"stage": "ckpt", "event": "push_failed"}); return False
     st = wait(CKPT_REF, "ckpt", timeout_s=13000); record({"stage": "ckpt", "event": "finished", "status": st})
     return st == "complete"                                     # don't pull the 8GB .pt; C.1 reads it server-side
 
 def stage_c1():
-    record({"stage": "c1", "event": "push", "ref": C1_REF})
-    if not push(C1_DIR): record({"stage": "c1", "event": "push_failed"}); return False
+    st, _ = status(C1_REF)
+    if st == "complete": log("c1 already complete; pulling")
+    elif st in ACTIVE: log(f"c1 already {st}; skip push, just wait")
+    else:
+        record({"stage": "c1", "event": "push", "ref": C1_REF})
+        if not push(C1_DIR): record({"stage": "c1", "event": "push_failed"}); return False
     st = wait(C1_REF, "c1", timeout_s=6000); record({"stage": "c1", "event": "finished", "status": st})
     if st != "complete": return False
     out = C1_DIR/"out"

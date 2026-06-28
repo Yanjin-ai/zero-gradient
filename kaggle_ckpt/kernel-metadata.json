@@ -1,5 +1,5 @@
 {
-  "id": "yanjinli2001/post-backprop-zerograd-ckpt",
+  "id": "yanjinli2001/post-backprop-zerograd-4b-checkpoint",
   "title": "Post-Backprop ZeroGrad 4B Checkpoint",
   "code_file": "ckpt_kernel.ipynb",
   "language": "python",

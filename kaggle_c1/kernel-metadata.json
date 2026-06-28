@@ -1,6 +1,6 @@
 {
   "id": "yanjinli2001/post-backprop-zerograd-c1",
-  "title": "Post-Backprop ZeroGrad C.1 Post-Training",
+  "title": "Post Backprop ZeroGrad C1",
   "code_file": "c1_kernel.ipynb",
   "language": "python",
   "kernel_type": "notebook",
@@ -13,6 +13,6 @@
   ],
   "competition_sources": [],
   "kernel_sources": [
-    "yanjinli2001/post-backprop-zerograd-ckpt"
+    "yanjinli2001/post-backprop-zerograd-4b-checkpoint"
   ]
 }
