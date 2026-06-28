@@ -91,6 +91,8 @@ def main():
     blob = torch.load(ck, map_location="cpu", weights_only=False)
     fld = {f.name for f in fields(Z.Config)}; cfg = Z.Config(**{k: v for k, v in blob["cfg"].items() if k in fld})
     model = Z.ZeroGradMoE(cfg, cfg.vocab); model.load_state_dict(blob["state"])
+    del blob                                                   # free the 8GB CPU copy after it's on the GPU
+    if torch.cuda.is_available(): torch.cuda.empty_cache()
     print(f"  reloaded {cfg.name}: {cfg.param_count()/1e9:.3f}B params  vocab={cfg.vocab}  seq_len={cfg.seq_len}  head={cfg.head}")
 
     data = Z.build_data(cfg)                                   # rebuilds same tokenizer/windows -> valid LM eval + encoder

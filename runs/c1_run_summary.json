@@ -1,0 +1,20 @@
+{
+  "checkpoint": "/Volumes/SANDISK ELE/zero gradient/runs/best_ckpt.pt",
+  "config": "small",
+  "param_gigaparams": 0.003,
+  "corpus": "synthetic(local)/word",
+  "task": "compositional-sentiment (head-only)",
+  "head": "2-layer MLP (hand-derived)",
+  "majority_baseline": 0.503,
+  "linear_head_acc": 0.5187,
+  "mlp_head_acc": 0.5187,
+  "mlp_head_acc_rerun": 0.5187,
+  "acc_negated": 0.5529,
+  "acc_not_negated": 0.4839,
+  "lm_ppl_before": 6.259,
+  "lm_ppl_after": 6.259,
+  "zero_forgetting": true,
+  "deterministic": true,
+  "zero_autograd": true,
+  "head_train_steps": 400
+}

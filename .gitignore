@@ -4,3 +4,7 @@
 __pycache__/
 
 *.pt
+
+kaggle_*/out/
+runs/orchestrator.log
+runs/experiments.jsonl

@@ -1,7 +1,7 @@
 {
-  "id": "yanjinli2001/post-backprop-zerograd-c1",
-  "title": "Post-Backprop ZeroGrad C.1 Post-Training",
-  "code_file": "c1_kernel.ipynb",
+  "id": "yanjinli2001/post-backprop-zerograd-ckpt",
+  "title": "Post-Backprop ZeroGrad 4B Checkpoint",
+  "code_file": "ckpt_kernel.ipynb",
   "language": "python",
   "kernel_type": "notebook",
   "is_private": true,
@@ -12,7 +12,5 @@
     "vadimkurochkin/wikitext-103"
   ],
   "competition_sources": [],
-  "kernel_sources": [
-    "yanjinli2001/post-backprop-zerograd-ckpt"
-  ]
+  "kernel_sources": []
 }

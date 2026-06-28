@@ -1,0 +1,82 @@
+"""Kaggle orchestrator for the C.1 4B pipeline: push -> poll -> pull -> record.
+
+Stages (run sequentially; each is resumable):
+  ckpt : push kaggle_ckpt  -> 4B pretrain with ZG_CKPT=1 -> best_ckpt.pt (8GB) in the kernel's output
+  c1   : push kaggle_c1    -> reloads best_ckpt.pt (via kernel_sources) -> head-only MLP sentiment
+
+Designed to run in the background (long poll loops). Writes status + metrics to runs/experiments.jsonl
+and a human log to runs/orchestrator.log. Does NOT download the 8GB checkpoint locally (the C.1 kernel
+consumes it server-side); only pulls the small C.1 summary.
+
+Usage:  python3 orchestrate_kaggle.py [ckpt] [c1]      (default: both)
+Requires Kaggle API creds (~/.kaggle/kaggle.json or KAGGLE_USERNAME/KAGGLE_KEY).
+"""
+import subprocess, time, json, sys, re
+from pathlib import Path
+from datetime import datetime, timezone
+
+ROOT = Path(__file__).parent
+(ROOT/"runs").mkdir(exist_ok=True)
+LEDGER = ROOT/"runs"/"experiments.jsonl"; LOG = ROOT/"runs"/"orchestrator.log"
+CKPT_DIR, C1_DIR = ROOT/"kaggle_ckpt", ROOT/"kaggle_c1"
+CKPT_REF = "yanjinli2001/post-backprop-zerograd-ckpt"
+C1_REF = "yanjinli2001/post-backprop-zerograd-c1"
+DONE = ("complete", "error", "cancelacknowledged")
+
+def now(): return datetime.now(timezone.utc).isoformat()
+def log(m):
+    line = f"[{now()}] {m}"; print(line, flush=True)
+    with open(LOG, "a") as f: f.write(line + "\n")
+def record(e):
+    e = {"ts": now(), "site": "kaggle", **e}
+    with open(LEDGER, "a") as f: f.write(json.dumps(e, default=float) + "\n")
+def sh(cmd):
+    r = subprocess.run(cmd, capture_output=True, text=True); return r.returncode, (r.stdout or "") + (r.stderr or "")
+
+def check_creds():
+    rc, out = sh(["kaggle", "config", "view"])
+    if rc != 0 or "username" not in out.lower():
+        rc2, _ = sh(["kaggle", "kernels", "list", "-m", "--page-size", "1"])
+        if rc2 != 0: return False
+    return True
+
+def push(d):
+    rc, out = sh(["kaggle", "kernels", "push", "-p", str(d)]); log(f"push {d.name}: rc={rc} {out.strip()[:240]}"); return rc == 0
+def status(ref):
+    rc, out = sh(["kaggle", "kernels", "status", ref]); m = re.search(r'status\s+"?([A-Za-z]+)"?', out)
+    return (m.group(1).lower() if m else "unknown"), out
+def wait(ref, label, timeout_s, interval=60):
+    t0 = time.time()
+    while time.time() - t0 < timeout_s:
+        st, out = status(ref); log(f"{label} status={st} ({int(time.time()-t0)}s)")
+        if st in DONE: return st
+        time.sleep(interval)
+    return "timeout"
+def pull(ref, d):
+    d.mkdir(exist_ok=True); rc, out = sh(["kaggle", "kernels", "output", ref, "-p", str(d)]); log(f"pull {ref} rc={rc}"); return rc == 0
+
+def stage_ckpt():
+    record({"stage": "ckpt", "event": "push", "ref": CKPT_REF})
+    if not push(CKPT_DIR): record({"stage": "ckpt", "event": "push_failed"}); return False
+    st = wait(CKPT_REF, "ckpt", timeout_s=13000); record({"stage": "ckpt", "event": "finished", "status": st})
+    return st == "complete"                                     # don't pull the 8GB .pt; C.1 reads it server-side
+
+def stage_c1():
+    record({"stage": "c1", "event": "push", "ref": C1_REF})
+    if not push(C1_DIR): record({"stage": "c1", "event": "push_failed"}); return False
+    st = wait(C1_REF, "c1", timeout_s=6000); record({"stage": "c1", "event": "finished", "status": st})
+    if st != "complete": return False
+    out = C1_DIR/"out"
+    if pull(C1_REF, out) and (out/"c1_run_summary.json").exists():
+        d = json.loads((out/"c1_run_summary.json").read_text())
+        record({"stage": "c1", "event": "metrics", "metrics": d}); log("C1 RESULT: " + json.dumps(d, default=float))
+    return True
+
+if __name__ == "__main__":
+    stages = [s for s in sys.argv[1:]] or ["ckpt", "c1"]
+    log(f"orchestrator start: stages={stages}")
+    if not check_creds():
+        log("NO KAGGLE CREDENTIALS — put kaggle.json in ~/.kaggle/ or set KAGGLE_USERNAME/KAGGLE_KEY"); sys.exit(2)
+    if "ckpt" in stages and not stage_ckpt(): log("ckpt stage did not complete; stopping"); sys.exit(1)
+    if "c1" in stages and not stage_c1(): log("c1 stage did not complete"); sys.exit(1)
+    log("orchestrator done")

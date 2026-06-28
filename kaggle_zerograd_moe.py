@@ -297,6 +297,8 @@ class ZeroGradMoE:
 
     def load_state_dict(self, sd):
         for k, v in sd.items():
+            setattr(self, k, None)                             # free the old (random-init) tensor FIRST so we never
+            if CUDA: torch.cuda.empty_cache()                  # hold both copies -> avoids ~2x (16GB) GPU peak at 4B
             setattr(self, k, _map_t(v, lambda t: t.to(DEVICE).to(self.cfg.td)))
         return self
 
