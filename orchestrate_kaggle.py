@@ -24,6 +24,7 @@ C1_REF = "yanjinli2001/post-backprop-zerograd-c1"
 ADAPT_REF = "yanjinli2001/post-backprop-zerograd-adapt"
 DONE = ("complete", "error", "cancelacknowledged", "cancelrequested")
 ACTIVE = ("running", "queued")
+FORCE = False                                                 # set from argv in __main__ ("force" -> always re-push)
 
 def now(): return datetime.now(timezone.utc).isoformat()
 def log(m):
@@ -84,10 +85,10 @@ def stage_c1():
 
 def stage_adapt():
     st, _ = status(ADAPT_REF)
-    if st == "complete": log("adapt already complete; pulling")
-    elif st in ACTIVE: log(f"adapt already {st}; skip push, just wait")
+    if not FORCE and st == "complete": log("adapt already complete; pulling")
+    elif not FORCE and st in ACTIVE: log(f"adapt already {st}; skip push, just wait")
     else:
-        record({"stage": "adapt", "event": "push", "ref": ADAPT_REF})
+        record({"stage": "adapt", "event": "push", "ref": ADAPT_REF, "force": FORCE})
         if not push(ADAPT_DIR): record({"stage": "adapt", "event": "push_failed"}); return False
     st = wait(ADAPT_REF, "adapt", timeout_s=6000); record({"stage": "adapt", "event": "finished", "status": st})
     if st != "complete": return False
@@ -98,8 +99,9 @@ def stage_adapt():
     return True
 
 if __name__ == "__main__":
-    stages = [s for s in sys.argv[1:]] or ["ckpt", "c1"]
-    log(f"orchestrator start: stages={stages}")
+    args = sys.argv[1:]; FORCE = "force" in args                # force -> always (re)push even if complete
+    stages = [s for s in args if s != "force"] or ["ckpt", "c1"]
+    log(f"orchestrator start: stages={stages} force={FORCE}")
     if not check_creds():
         log("NO KAGGLE CREDENTIALS — put kaggle.json in ~/.kaggle/ or set KAGGLE_USERNAME/KAGGLE_KEY"); sys.exit(2)
     if "ckpt" in stages and not stage_ckpt(): log("ckpt stage did not complete; stopping"); sys.exit(1)
