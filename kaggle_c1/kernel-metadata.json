@@ -1,0 +1,16 @@
+{
+  "id": "yanjinli2001/post-backprop-zerograd-c1",
+  "title": "Post-Backprop ZeroGrad C.1 Post-Training",
+  "code_file": "c1_kernel.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": false,
+  "machine_shape": "NvidiaTeslaT4",
+  "dataset_sources": [
+    "vadimkurochkin/wikitext-103"
+  ],
+  "competition_sources": [],
+  "kernel_sources": []
+}

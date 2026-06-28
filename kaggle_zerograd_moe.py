@@ -149,12 +149,14 @@ def build_data(cfg: Config):
         vocab = [None]*tk.get_vocab_size()
         ids = torch.tensor(tk.encode(text).ids, dtype=torch.long)
         test_ids = torch.tensor(tk.encode(test_text).ids, dtype=torch.long) if test_text is not None else None
+        encode = lambda s: tk.encode(s).ids                    # C.1: expose the model's exact tokenizer (downstream tasks)
     else:
         from collections import Counter
         vocab = ["<pad>", "<unk>"] + [w for w, _ in Counter(_tok(text)).most_common(cfg.vocab-2)]
         stoi = {w: i for i, w in enumerate(vocab)}
         ids = torch.tensor([stoi.get(w, 1) for w in _tok(text)], dtype=torch.long)
         test_ids = torch.tensor([stoi.get(w, 1) for w in _tok(test_text)], dtype=torch.long) if test_text is not None else None
+        encode = lambda s: [stoi.get(w, 1) for w in _tok(s)]   # C.1: same word-level encoder the model trained with
     V = len(vocab)
     def _win(t, stride, cap):
         Xs, Ys, Y2s = [], [], []
@@ -164,7 +166,7 @@ def build_data(cfg: Config):
     X, Y, Y2 = _win(ids, 3, 400000)
     perm = torch.randperm(len(X), generator=torch.Generator().manual_seed(SEED)); X, Y, Y2 = X[perm], Y[perm], Y2[perm]
     nval = max(256, len(X)//20)
-    d = dict(corpus=corpus + "/" + cfg.tokenizer, vocab=vocab, Xtr=X[nval:].to(DEVICE), Ytr=Y[nval:].to(DEVICE),
+    d = dict(corpus=corpus + "/" + cfg.tokenizer, vocab=vocab, _encode=encode, Xtr=X[nval:].to(DEVICE), Ytr=Y[nval:].to(DEVICE),
              Y2tr=Y2[nval:].to(DEVICE), Xval=X[:nval].to(DEVICE), Yval=Y[:nval].to(DEVICE))
     cnt = torch.bincount(d["Ytr"], minlength=V).float()+1e-6; p = cnt/cnt.sum()
     d["unigram_ppl"] = float(torch.exp(-(p[d["Yval"]].log()).mean()))
@@ -358,6 +360,7 @@ def train(model, data, cfg, out_dir=None):
     if CUDA: torch.cuda.reset_peak_memory_stats()
     best_ppl, best_step, no_improve, prev_usage, ckpt_hist = float("inf"), 0, 0, None, []
     ckpt_path = (Path(out_dir)/"best_ckpt.pt") if (cfg.save_ckpt and out_dir is not None) else None
+    best_state = None                                          # C.1: hold best weights in CPU RAM, write to disk ONCE at end
     step = 0
     while step < cfg.steps and time.time()-t0 < cfg.time_limit_s:
         g = torch.Generator().manual_seed(SEED+step); ix = torch.randint(0, len(Xtr), (cfg.batch_size,), generator=g)
@@ -410,14 +413,17 @@ def train(model, data, cfg, out_dir=None):
             if ppl < best_ppl - 1e-6:
                 best_ppl, best_step, no_improve = ppl, step, 0
                 ckpt_hist.append(dict(step=step, val_ppl=round(ppl, 3), t=round(time.time()-t0, 1)))
-                if ckpt_path is not None:                      # C.1 prep: persist best model (overwrite single file)
-                    torch.save(dict(state=model.state_dict(), cfg=asdict(cfg), step=step, val_ppl=round(ppl, 3)), ckpt_path)
+                if ckpt_path is not None:                      # C.1: snapshot best to CPU RAM (no per-best disk I/O)
+                    best_state = None                          # free prior copy first -> peak holds only one (~8GB at 4B)
+                    best_state = dict(state=model.state_dict(), cfg=asdict(cfg), step=step, val_ppl=round(ppl, 3))
             else: no_improve += 1
             print(f"  step {step:5d} lr={lrf:.4f} val_ppl={ppl:.2f} best={best_ppl:.2f}@{best_step} "
                   f"H={ent:.2f} drift={drift if drift is None else round(drift,4)} frozen={freeze} t={time.time()-t0:.0f}s")
             if no_improve >= cfg.patience:                     # early stop -> lock near the best point t*
                 print(f"  [early-stop] no val improvement for {cfg.patience} evals; best {best_ppl:.2f}@{best_step}"); break
         step += 1
+    if ckpt_path is not None and best_state is not None:       # C.1: write the best checkpoint once, at the end
+        torch.save(best_state, ckpt_path); print(f"  [ckpt] saved best (step {best_state['step']}, ppl {best_state['val_ppl']}) -> {ckpt_path}")
     peak = (torch.cuda.max_memory_allocated()/2**20) if CUDA else (model.num_params*(2 if cfg.dtype=='float16' else 4)/2**20)
     return dict(curve=curve, steps=step, wall_s=round(time.time()-t0, 1), peak_mem_mb=round(peak, 1),
                 final_ppl=curve[-1]["val_ppl"] if curve else None, best_ppl=round(best_ppl, 3), best_step=best_step,
