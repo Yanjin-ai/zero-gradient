@@ -56,6 +56,7 @@ class Config:
     capacity_factor: float = 2.0
     dtype: str = "float32"
     tokenizer: str = "word"           # "word" | "bpe" (Phase D: offline-trained ByteLevel BPE subword)
+    head: str = "linear"              # "linear" | "mlp" (Phase D-1: 2-layer readout head, hand-derived, no autograd)
     steps: int = 600
     batch_size: int = 64
     lr: float = 0.1
@@ -79,7 +80,7 @@ class Config:
         attn = 2*d*d
         proto = self.n_layers*self.n_experts*max(32, d//4)
         experts = self.n_layers*self.n_experts*(d*d + d)
-        heads = self.n_layers*(d*V + V)
+        heads = self.n_layers*(d*V + V) + (self.n_layers*(d*d + d) if self.head == "mlp" else 0)
         return emb + attn + proto + experts + heads
 
 
@@ -96,6 +97,7 @@ elif os.environ.get("ZG_RUN_MIN"):                             # real run with a
     KAGGLE.time_limit_s = int(os.environ["ZG_RUN_MIN"])*60; KAGGLE.eval_every = 100
 CONFIG = KAGGLE if (ON_KAGGLE and CUDA) else Config()          # auto-pick; flip manually if needed
 if os.environ.get("ZG_TOKENIZER"): CONFIG.tokenizer = os.environ["ZG_TOKENIZER"]   # Phase D: "bpe"
+if os.environ.get("ZG_HEAD"): CONFIG.head = os.environ["ZG_HEAD"]                  # Phase D-1: "mlp"
 DEVICE = torch.device("cuda:0" if CUDA else "cpu")
 DT = CONFIG.td
 
@@ -179,6 +181,9 @@ class ZeroGradMoE:
         self.be = [[torch.zeros(d, dtype=cfg.td, device=DEVICE) for _ in range(cfg.n_experts)] for _ in range(cfg.n_layers)]
         self.Hb = [w(d, V, sc=1/math.sqrt(d)) for _ in range(cfg.n_layers)]                # per-block local heads
         self.bH = [torch.zeros(V, dtype=cfg.td, device=DEVICE) for _ in range(cfg.n_layers)]
+        if cfg.head == "mlp":                                                              # Phase D-1: 2-layer readout head
+            self.Hh1 = [w(d, d, sc=1/math.sqrt(d)) for _ in range(cfg.n_layers)]
+            self.bh1 = [torch.zeros(d, dtype=cfg.td, device=DEVICE) for _ in range(cfg.n_layers)]
         self.num_params = cfg.param_count()
 
     def context(self, x):
@@ -219,7 +224,30 @@ class ZeroGradMoE:
             a, _ = self.route(rrep, self.C[l]); A.append(a); h = self.block(h, a, l)
         return h, rrep, A
 
-    def logits(self, h): return h @ self.Hb[-1] + self.bH[-1]
+    def logits(self, h):
+        if self.cfg.head == "mlp": h = torch.relu(h @ self.Hh1[-1] + self.bh1[-1])
+        return h @ self.Hb[-1] + self.bH[-1]
+
+    def readout(self, l, out, y):
+        """Per-block head forward + HAND-DERIVED backward (no autograd). Returns loss, dout (signal to
+        the block), and the head's own updates. mlp head = relu(out@Hh1+bh1)@Hb+bH (2-step local backward)."""
+        B = y.shape[0]
+        if self.cfg.head == "mlp":
+            z1 = out @ self.Hh1[l] + self.bh1[l]; hid = torch.relu(z1)
+        else:
+            hid = out
+        lg = (hid.float() @ self.Hb[l].float() + self.bH[l].float())
+        lp = lg - lg.logsumexp(-1, keepdim=True); loss = float(-lp[torch.arange(B), y].mean())
+        p = torch.softmax(lg, -1); p[torch.arange(B), y] -= 1.0; p /= B
+        dHb = hid.float().T @ p; dbH = p.sum(0); dhid = p @ self.Hb[l].float().T
+        upd = dict(Hb=dHb, bH=dbH)
+        if self.cfg.head == "mlp":
+            dz1 = dhid * (z1.float() > 0).float()
+            upd["Hh1"] = out.float().T @ dz1; upd["bh1"] = dz1.sum(0)
+            dout = dz1 @ self.Hh1[l].float().T                  # signal to block flows through the head
+        else:
+            dout = dhid
+        return loss, dout, upd
 
 
 # ====================================================================================
@@ -288,8 +316,10 @@ def train(model, data, cfg):
                 mm = (assign == e).any(1); inp = hin[mm]; z = inp @ model.We[l][e] + model.be[l][e]; he = torch.relu(z)
                 moe[mm] = moe[mm] + he; cache[e] = (inp, z, mm, he)
             hl = hin + moe/cfg.k_route
-            loss, dh, dHb, dbH = ce_signal(hl, yb, model.Hb[l], model.bH[l]); monitor.append(loss)
-            model.Hb[l] = (model.Hb[l].float() - lrf*dHb).to(cfg.td); model.bH[l] = (model.bH[l].float() - lrf*dbH).to(cfg.td)
+            loss, dh, upd = model.readout(l, hl, yb); monitor.append(loss)
+            model.Hb[l] = (model.Hb[l].float() - lrf*upd["Hb"]).to(cfg.td); model.bH[l] = (model.bH[l].float() - lrf*upd["bH"]).to(cfg.td)
+            if cfg.head == "mlp":
+                model.Hh1[l] = (model.Hh1[l].float() - lrf*upd["Hh1"]).to(cfg.td); model.bh1[l] = (model.bh1[l].float() - lrf*upd["bh1"]).to(cfg.td)
             cand = torch.tensor(sorted(cache.keys())); sel = sched[l].select(cand, cfg.k_update)
             for e in sel:
                 inp, z, mm, he = cache[e]; dz = (dh[mm]/cfg.k_route) * (z.float() > 0).float()
