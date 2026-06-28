@@ -45,5 +45,19 @@
 - **off-domain 警示**：`c1_4b.py` 对小合成/小BPE checkpoint（base 没学过 good/bad）→ 近 chance（57%）。**这正是为什么 4B 必须用真实词**：WikiText 4B 学过 good/bad/not，表示**有望**线性编码这些原子特征 → MLP 头组合出情感。
 - **4B 是真正的实验**：若 acc 明显超 majority 且 LM ppl 零退化 → 证明"零 BP 4B LM + head-only MLP 头后训练"完整成立；若仍近 chance → 说明 WikiText 表示对这种组合情感的零样本可分性不足（也是诚实结论）。
 
-## 结果回写
-跑完后把 `c1_run_summary.json` 的关键字段（任务类型/head-only/MLP 头/sentiment acc/LM ppl 前后）补进 `项目总档案.md` §6（Phase C.1）与本说明，并标注与本机 100% 的关系。
+## 实际结果（2026-06-28，Kaggle T4，全自动跑完）
+`orchestrate_kaggle.py` 自动完成 ckpt（4B 预训练，~2.9h 跑满预算）→ C.1（head-only，~26min）两段。`c1_run_summary.json`：
+
+| 量 | 值 |
+|---|---|
+| config / 参数 | kaggle-4B / **4.16B** |
+| LM ppl before → after | **1355.4 → 1355.4（零遗忘）** |
+| majority baseline | 50.3% |
+| 线性头 acc | 51.9%（XOR 线性不可分，预期） |
+| **MLP 头 acc** | **59.9%**（rerun 一致） |
+| 否定 / 非否定子集 | 56.2% / 53.1% |
+| deterministic / zero-autograd | True / True |
+
+**判读**：① **机制在 4B 完整成立**——4.16B 零 BP checkpoint reload + head-only 零-autograd MLP 后训练，LM ppl 1355 完全不动（零遗忘）、确定性、零 autograd，全自动跑通。② **零样本迁移弱**——MLP 头 60% 仅超 majority ~10pp（7σ，是真信号非噪声），MLP>线性说明 WikiText 表示里有**可组合但微弱**的情感信号，远不及 in-domain 的 100%。③ **诚实结论**：零 BP 框架**支持**后训练（机制硬通），但 WikiText 预训练表示对**域外组合情感**的零样本线性可分性有限；要强结果需 in-domain 适配（本机 100% 已示）。
+
+> 附带：本次 ckpt 跑满 2.9h 预算（未早停，Phase C 单调），test ppl **1355** 略优于文档记录的 1391（早停 t\*=54min 版）——同配置训练更久、ppl 更低，符合预期。
