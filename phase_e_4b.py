@@ -73,12 +73,14 @@ def main():
     base.E = E_p.detach().to(cfg.td)                           # write adapted embedding back
     head = ("mlp", W1.detach(), b1.detach(), W2.detach(), b2.detach(), False)
     acc_bp = C.acc(base, head, Xv, Yv); acc_bp_neg = C.acc(base, head, Xv, Yv, NG.bool())
+    acc_cf = C.acc(base, C.train_head_mlp(base, Xtr, Ytr, d, partition=False), Xv, Yv)   # fair: closed-form head on the BP-adapted rep
     ppl_after = Z.evaluate(base, Xlm, Ylm, cfg, batches=10**9)
 
     summary = dict(checkpoint=str(ck), config=cfg.name, param_gigaparams=round(cfg.param_count()/1e9, 3),
                    branch="Phase E hybrid BP (embedding+head, research)", majority_baseline=round(maj, 3),
                    bp_steps=E_STEPS, bp_lr=E_LR, zeroshot_acc=round(acc_zeroshot, 4),
                    mixed_bp_acc=round(acc_bp, 4), mixed_bp_acc_negated=round(acc_bp_neg, 4),
+                   adapted_rep_closedform_acc=round(acc_cf, 4),   # closed-form head on BP-adapted embedding (fair vs zero-shot)
                    wiki_ppl_before=round(ppl_before, 3), wiki_ppl_after=round(ppl_after, 3),
                    forgetting_dppl=round(ppl_after-ppl_before, 3), acc_gain=round(acc_bp-acc_zeroshot, 4),
                    uses_autograd=True)

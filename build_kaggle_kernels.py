@@ -89,8 +89,8 @@ pe.cells = [
     wf("kaggle_zerograd_moe.py"), wf("c1_4b.py"), wf("phase_e_4b.py"),
     nbf.v4.new_code_cell(
         "import os, json\n"
-        "os.environ.setdefault('ZG_E_STEPS', '400')\n"
-        "os.environ.setdefault('ZG_E_LR', '0.05')\n"
+        "os.environ.setdefault('ZG_E_STEPS', '1000')   # match the small-config setting that hit 100%\n"
+        "os.environ.setdefault('ZG_E_LR', '0.1')\n"
         "import phase_e_4b\n"
         "print(json.dumps(phase_e_4b.main(), indent=2, default=float))"),
 ]
