@@ -43,5 +43,21 @@
 ## 7. 升级单杠杆（备选，若首发不够）
 顶层 2 block + 头 BP；或 BP 仅作用于"新增任务专家"（结构分区 + BP，把分区思想与少量 BP 结合，遗忘更可控）。每次仍只改一维度。
 
----
-**待你确认**：① 首发单杠杆 = 顶层 1 block + 任务头 BP（推荐）是否 OK；② gate 阈值（G1 目标 acc、G2 遗忘上界）是否按上面定；③ 是否现在就实现小配置 Phase E，还是先把 v1.x 推上 GitHub 收尾再开工。
+## 8. 小配置实测结果（2026-06-29，`phase_e.py`）—— gate 决定性通过
+
+| bp_N | sent_acc | 原域 O-PPL | 遗忘 |
+|---|---|---|---|
+| 0 | 49.5% | 4.80 | +0.00 |
+| 400 | 71.1% | 4.81 | +0.01 |
+| 1000 | **100.0%** | 4.82 | **+0.02** |
+
+**【事实】最干净的对照：同样适配组件（embedding + 顶层 block），BP vs 零 BP**
+- D.2（零 BP 纵向信号，embedding+top）：**61%** / +0.11
+- **Phase E（真实 BP，embedding+top）：100%** / +0.02
+
+**少量真实梯度直接解决任务（100%）且近零遗忘**，而所有零 BP 路线 plateau 在 ~61%。精确梯度沿组合路径正确分配 credit，手算零 BP 信号做不到。**G1✓（100%≥92%）G2✓（+0.02≪+31）→ 过门，迁 4B。**
+
+**【lever 修正，诚实记录】** charter 原定的**最小单杠杆"顶层 1 block + 头"失败**（49→52%，与 D.2 top-only 同——顶层是残差小扰动，BP 也撬不动）。**真正的 lever 是 embedding**：把 embedding 纳入 BP（embedding + 顶层 block + 头）才让它从 52% 跳到 100%。这是 Phase E 的实际单杠杆。**4B 可行性**：autograd 图只含被路由的 expert + embedding（稀疏），显存可控。
+
+## 9. 下一步：4B Phase E
+gate 已过。下一步用现有 orchestrator 跑 4B Mixed-BP：从 1355 checkpoint 载入 → BP 适配（embedding + 顶层 block + 任务头）→ 测 sentiment acc + WikiText ppl 前后。**四档对照表**填上 Mixed-BP 这一行，判定是否明显优于所有零 BP 档（ZeroShot 60% / 冻头 62%/+3.4 / 分区 61%/0）。**仍是研究分支，不碰零 BP 提交版。**
