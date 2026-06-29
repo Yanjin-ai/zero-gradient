@@ -98,6 +98,25 @@ pe.metadata.update(KSPEC)
 (root/"kaggle_phase_e").mkdir(exist_ok=True)
 nbf.write(pe, str(root/"kaggle_phase_e"/"phase_e_kernel.ipynb"))
 
+# ---- Phase E task #2: NLI 4B kernel (embedding vs embedding+attention BP) ----
+pn = nbf.v4.new_notebook()
+pn.cells = [
+    nbf.v4.new_markdown_cell(
+        "# Phase E task #2 -- NLI at 4B (RESEARCH BRANCH, autograd)\n"
+        "Reloads `best_ckpt.pt` and runs zero-shot vs Mixed-BP(embedding) vs Mixed-BP(embedding+attention) on "
+        "a 3-class relational NLI task, with a fair closed-form readout + WikiText ppl drift. Attach WikiText-103."),
+    wf("kaggle_zerograd_moe.py"), wf("c1_4b.py"), wf("phase_e_4b.py"), wf("phasee_nli_4b.py"),
+    nbf.v4.new_code_cell(
+        "import os, json\n"
+        "os.environ.setdefault('ZG_E_STEPS', '1000')\n"
+        "os.environ.setdefault('ZG_E_LR', '0.1')\n"
+        "import phasee_nli_4b\n"
+        "print(json.dumps(phasee_nli_4b.main(), indent=2, default=float))"),
+]
+pn.metadata.update(KSPEC)
+(root/"kaggle_phasee_nli").mkdir(exist_ok=True)
+nbf.write(pn, str(root/"kaggle_phasee_nli"/"phasee_nli_kernel.ipynb"))
+
 for p in ["kaggle_ckpt/ckpt_kernel.ipynb", "kaggle_c1/c1_kernel.ipynb", "kaggle_adapt/adapt_kernel.ipynb",
-          "kaggle_phase_e/phase_e_kernel.ipynb"]:
+          "kaggle_phase_e/phase_e_kernel.ipynb", "kaggle_phasee_nli/phasee_nli_kernel.ipynb"]:
     print(f"wrote {p} ({(root/p).stat().st_size//1024} KB)")

@@ -54,7 +54,17 @@ python3 experiments.py log '<json>'   # 追加一条
 | `670815a` | 修 Kaggle 自动化（kernelspec / slug / 状态解析） |
 | `3630b1f` | C.1 4B 实测结果（机制成立、零样本迁移弱 60%） |
 
-## 6. 文件地图（工程）
+## 6b. 工程规范（状态管理，踩坑后定的硬规则）
+
+> 起因：`load_state_dict` 的 **CPU 别名 bug**——CPU 上 `.to(cpu)` 不复制 → reset 后 `base.E` 别名 golden `baseA["E"]`，随后原地 `index_add_` 污染了 golden，使多 reset 小配置实验串味（见档案勘误）。规则如下，**违反即可能静默出错**：
+
+1. **复位永远 clone，golden 只读**：`load_state_dict` 对每个张量 `.clone()`（已修）；`baseA = base.state_dict()` 视为**只读 golden checkpoint**，任何路径都不得原地改它。
+2. **禁止"隐式别名 + 原地更新"混用**：对共享/复用对象（尤其 `E`）优先**重新赋值**（`base.E = new`）而非原地 `index_add_/index_copy_`；若必须原地，**只能在当前 run 的局部拷贝上**（如 `E_p = base.E.detach().clone()`，BP 改 `E_p` 不碰 `base.E`）。
+3. **多 reset 实验必带 reset 自检**：跑 `python3 selfcheck.py` —— 同配置"fresh vs 串跑后再 reset"两次，结果必须**逐位一致**；不一致说明 reset 漏了状态。开发期先过自检再信数。
+4. **gate + 日志分层**：每实验记 small-config gate（任务提升 vs 遗忘 vs 稳定性）；失败要写"失败原因 + 是否疑似 bug 影响"；区分**首跑 raw 数**与**修 bug 后 corrected 数**，用勘误段连起来（档案已这样做）。
+5. **4B 与小配置风险隔离**：小配置探索脚本（多 reset、CPU）自带 reset 自检；**4B 单发脚本保持无共享状态、不原地写 checkpoint**（CUDA `.to` 本就复制、且单发）——即使小配置模块有 bug 也不污染 4B 主结果。
+
+## 6c. 文件地图（工程）
 - 算法/提交版：`kaggle_zerograd_moe.py`（含 ZG_* 开关、state_dict、save-once）。
 - C.1：`ckpt_verify.py` / `c1_posttrain.py` / `c1_sentiment.py` / `c1_4b.py` / `adapt_sentiment.py`。
 - 自动化：`build_kaggle_kernels.py` / `orchestrate_kaggle.py` / `experiments.py` / `kaggle_ckpt/` / `kaggle_c1/`。

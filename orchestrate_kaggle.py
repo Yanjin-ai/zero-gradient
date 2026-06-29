@@ -19,11 +19,12 @@ ROOT = Path(__file__).parent
 (ROOT/"runs").mkdir(exist_ok=True)
 LEDGER = ROOT/"runs"/"experiments.jsonl"; LOG = ROOT/"runs"/"orchestrator.log"
 CKPT_DIR, C1_DIR, ADAPT_DIR = ROOT/"kaggle_ckpt", ROOT/"kaggle_c1", ROOT/"kaggle_adapt"
-PE_DIR = ROOT/"kaggle_phase_e"
+PE_DIR = ROOT/"kaggle_phase_e"; PN_DIR = ROOT/"kaggle_phasee_nli"
 CKPT_REF = "yanjinli2001/post-backprop-zerograd-4b-checkpoint"
 C1_REF = "yanjinli2001/post-backprop-zerograd-c1"
 ADAPT_REF = "yanjinli2001/post-backprop-zerograd-adapt"
 PE_REF = "yanjinli2001/post-backprop-zerograd-phasee"
+PN_REF = "yanjinli2001/post-backprop-zerograd-phasenli"
 DONE = ("complete", "error", "cancelacknowledged", "cancelrequested")
 ACTIVE = ("running", "queued")
 FORCE = False                                                 # set from argv in __main__ ("force" -> always re-push)
@@ -126,4 +127,6 @@ if __name__ == "__main__":
     if "adapt" in stages and not stage_adapt(): log("adapt stage did not complete"); sys.exit(1)
     if "phasee" in stages and not stage_generic(PE_REF, PE_DIR, "phasee", "phase_e_run_summary.json"):
         log("phasee stage did not complete"); sys.exit(1)
+    if "phasenli" in stages and not stage_generic(PN_REF, PN_DIR, "phasenli", "phasee_nli_run_summary.json"):
+        log("phasenli stage did not complete"); sys.exit(1)
     log("orchestrator done")

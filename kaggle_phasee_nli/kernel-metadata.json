@@ -1,0 +1,18 @@
+{
+  "id": "yanjinli2001/post-backprop-zerograd-phasenli",
+  "title": "Post Backprop ZeroGrad PhaseNLI",
+  "code_file": "phasee_nli_kernel.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": false,
+  "machine_shape": "NvidiaTeslaT4",
+  "dataset_sources": [
+    "vadimkurochkin/wikitext-103"
+  ],
+  "competition_sources": [],
+  "kernel_sources": [
+    "yanjinli2001/post-backprop-zerograd-4b-checkpoint"
+  ]
+}

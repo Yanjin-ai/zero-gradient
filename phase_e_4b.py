@@ -18,9 +18,9 @@ import c1_4b as C
 SEED = Z.SEED
 E_STEPS = int(os.environ.get("ZG_E_STEPS", 400)); E_LR = float(os.environ.get("ZG_E_LR", 0.05))
 
-def ctx_fwd(base, xb, E_p):                                    # differentiable context (embedding trainable; attn frozen, cast fp32)
+def ctx_fwd(base, xb, E_p, Wq=None, Wk=None):                  # differentiable context (embedding, optionally attn, trainable)
     T = xb.shape[1]; emb = E_p[xb] + base.pos[:T].float().unsqueeze(0)
-    q = emb @ base.Wq.float(); k = emb @ base.Wk.float()
+    q = emb @ (base.Wq.float() if Wq is None else Wq); k = emb @ (base.Wk.float() if Wk is None else Wk)
     sc = (q @ k.transpose(1, 2))/math.sqrt(emb.shape[-1])
     m = torch.triu(torch.ones(T, T, device=xb.device), 1).bool()
     att = torch.softmax(sc.masked_fill(m, float("-inf")), -1)
