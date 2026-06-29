@@ -60,8 +60,8 @@ def pull(ref, d):
 
 def stage_ckpt():
     st, _ = status(CKPT_REF)                                    # idempotent: don't re-push a run already in flight
-    if st == "complete": log("ckpt already complete; skip push"); return True
-    if st in ACTIVE: log(f"ckpt already {st}; skip push, just wait")
+    if not FORCE and st == "complete": log("ckpt already complete; skip push"); return True
+    if not FORCE and st in ACTIVE: log(f"ckpt already {st}; skip push, just wait")
     else:
         record({"stage": "ckpt", "event": "push", "ref": CKPT_REF})
         if not push(CKPT_DIR): record({"stage": "ckpt", "event": "push_failed"}); return False
@@ -70,8 +70,8 @@ def stage_ckpt():
 
 def stage_c1():
     st, _ = status(C1_REF)
-    if st == "complete": log("c1 already complete; pulling")
-    elif st in ACTIVE: log(f"c1 already {st}; skip push, just wait")
+    if not FORCE and st == "complete": log("c1 already complete; pulling")
+    elif not FORCE and st in ACTIVE: log(f"c1 already {st}; skip push, just wait")
     else:
         record({"stage": "c1", "event": "push", "ref": C1_REF})
         if not push(C1_DIR): record({"stage": "c1", "event": "push_failed"}); return False
