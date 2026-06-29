@@ -59,5 +59,14 @@
 
 **【lever 修正，诚实记录】** charter 原定的**最小单杠杆"顶层 1 block + 头"失败**（49→52%，与 D.2 top-only 同——顶层是残差小扰动，BP 也撬不动）。**真正的 lever 是 embedding**：把 embedding 纳入 BP（embedding + 顶层 block + 头）才让它从 52% 跳到 100%。这是 Phase E 的实际单杠杆。**4B 可行性**：autograd 图只含被路由的 expert + embedding（稀疏），显存可控。
 
-## 9. 下一步：4B Phase E
-gate 已过。下一步用现有 orchestrator 跑 4B Mixed-BP：从 1355 checkpoint 载入 → BP 适配（embedding + 顶层 block + 任务头）→ 测 sentiment acc + WikiText ppl 前后。**四档对照表**填上 Mixed-BP 这一行，判定是否明显优于所有零 BP 档（ZeroShot 60% / 冻头 62%/+3.4 / 分区 61%/0）。**仍是研究分支，不碰零 BP 提交版。**
+## 9. 4B Phase E 实证结果（闭环，2026-06-29）
+
+`phase_e_4b.py`（只 BP embedding+头，T4 显存安全）。**公平读出**：须在 BP 适配后的 embedding 上重训**闭式头**（SGD 联合头欠训会假性掩盖提升）。
+
+| 后训练路线 | 4B acc | 遗忘 ΔPPL |
+|---|---|---|
+| Zero-shot head | 60% | 0 |
+| Zero-BP full / 冻头 / 分区 | 61 / 62 / 61% | +2190 / +3.4 / 0 |
+| **Phase E Mixed-BP（lr0.1/1000）** | **79%** | **+3.0** |
+
+**少量真实 BP 在 4B 也突破零 BP 天花板**：60%→**79%（+19pp）**、遗忘仅 +3 ppl。小配置 100%→4B 79%（方向转移，真实数据更难）。**坑**：第一点（lr0.05/400 + SGD 头读出）假性 60→57%，是 SGD 头欠训 + 超参不足的测量混淆；公平闭式头修正为 +19pp。**Phase E 闭环完成。**
