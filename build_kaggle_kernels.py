@@ -78,5 +78,26 @@ ad.metadata.update(KSPEC)
 (root/"kaggle_adapt").mkdir(exist_ok=True)
 nbf.write(ad, str(root/"kaggle_adapt"/"adapt_kernel.ipynb"))
 
-for p in ["kaggle_ckpt/ckpt_kernel.ipynb", "kaggle_c1/c1_kernel.ipynb", "kaggle_adapt/adapt_kernel.ipynb"]:
+# ---- Phase E (hybrid BP) kernel: research branch, autograd on embedding + task head ----
+pe = nbf.v4.new_notebook()
+pe.cells = [
+    nbf.v4.new_markdown_cell(
+        "# Phase E -- hybrid BP at 4B (RESEARCH BRANCH, uses autograd)\n"
+        "Reloads `best_ckpt.pt` and does a little REAL BP through the embedding + task head only "
+        "(everything else frozen, pretraining stays zero-BP) to adapt the compositional sentiment task. "
+        "Reports zero-shot vs Mixed-BP acc + WikiText ppl drift. NOT the zero-BP submission. Attach WikiText-103."),
+    wf("kaggle_zerograd_moe.py"), wf("c1_4b.py"), wf("phase_e_4b.py"),
+    nbf.v4.new_code_cell(
+        "import os, json\n"
+        "os.environ.setdefault('ZG_E_STEPS', '400')\n"
+        "os.environ.setdefault('ZG_E_LR', '0.05')\n"
+        "import phase_e_4b\n"
+        "print(json.dumps(phase_e_4b.main(), indent=2, default=float))"),
+]
+pe.metadata.update(KSPEC)
+(root/"kaggle_phase_e").mkdir(exist_ok=True)
+nbf.write(pe, str(root/"kaggle_phase_e"/"phase_e_kernel.ipynb"))
+
+for p in ["kaggle_ckpt/ckpt_kernel.ipynb", "kaggle_c1/c1_kernel.ipynb", "kaggle_adapt/adapt_kernel.ipynb",
+          "kaggle_phase_e/phase_e_kernel.ipynb"]:
     print(f"wrote {p} ({(root/p).stat().st_size//1024} KB)")

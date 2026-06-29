@@ -19,9 +19,11 @@ ROOT = Path(__file__).parent
 (ROOT/"runs").mkdir(exist_ok=True)
 LEDGER = ROOT/"runs"/"experiments.jsonl"; LOG = ROOT/"runs"/"orchestrator.log"
 CKPT_DIR, C1_DIR, ADAPT_DIR = ROOT/"kaggle_ckpt", ROOT/"kaggle_c1", ROOT/"kaggle_adapt"
+PE_DIR = ROOT/"kaggle_phase_e"
 CKPT_REF = "yanjinli2001/post-backprop-zerograd-4b-checkpoint"
 C1_REF = "yanjinli2001/post-backprop-zerograd-c1"
 ADAPT_REF = "yanjinli2001/post-backprop-zerograd-adapt"
+PE_REF = "yanjinli2001/post-backprop-zerograd-phasee"
 DONE = ("complete", "error", "cancelacknowledged", "cancelrequested")
 ACTIVE = ("running", "queued")
 FORCE = False                                                 # set from argv in __main__ ("force" -> always re-push)
@@ -98,6 +100,21 @@ def stage_adapt():
         record({"stage": "adapt", "event": "metrics", "metrics": d}); log("ADAPT RESULT: " + json.dumps(d, default=float))
     return True
 
+def stage_generic(ref, d, name, summ):
+    st, _ = status(ref)
+    if not FORCE and st == "complete": log(f"{name} already complete; pulling")
+    elif not FORCE and st in ACTIVE: log(f"{name} already {st}; skip push, just wait")
+    else:
+        record({"stage": name, "event": "push", "ref": ref})
+        if not push(d): record({"stage": name, "event": "push_failed"}); return False
+    st = wait(ref, name, timeout_s=6000); record({"stage": name, "event": "finished", "status": st})
+    if st != "complete": return False
+    out = d/"out"
+    if pull(ref, out) and (out/summ).exists():
+        m = json.loads((out/summ).read_text()); record({"stage": name, "event": "metrics", "metrics": m})
+        log(f"{name.upper()} RESULT: " + json.dumps(m, default=float))
+    return True
+
 if __name__ == "__main__":
     args = sys.argv[1:]; FORCE = "force" in args                # force -> always (re)push even if complete
     stages = [s for s in args if s != "force"] or ["ckpt", "c1"]
@@ -107,4 +124,6 @@ if __name__ == "__main__":
     if "ckpt" in stages and not stage_ckpt(): log("ckpt stage did not complete; stopping"); sys.exit(1)
     if "c1" in stages and not stage_c1(): log("c1 stage did not complete"); sys.exit(1)
     if "adapt" in stages and not stage_adapt(): log("adapt stage did not complete"); sys.exit(1)
+    if "phasee" in stages and not stage_generic(PE_REF, PE_DIR, "phasee", "phase_e_run_summary.json"):
+        log("phasee stage did not complete"); sys.exit(1)
     log("orchestrator done")

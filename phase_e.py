@@ -30,11 +30,14 @@ def ctx_fwd(base, xb, E_p):                                    # differentiable 
     att = torch.softmax(sc.masked_fill(m, float("-inf")), -1)
     return (emb + att @ emb)[:, -1], emb
 
-def run_phase_e(base, baseA, Xtr, Ytr, Odata, cfg, N, lr=0.1, htask=64):
+def run_phase_e(base, baseA, Xtr, Ytr, Odata, cfg, N, lr=0.1, htask=64, bp_top=True):
     base.load_state_dict(baseA); L = cfg.n_layers-1; d = cfg.d_model
     E_p = base.E.detach().float().clone().requires_grad_(True)                     # embedding (trainable; the real lever)
-    We_p = [w.detach().float().clone().requires_grad_(True) for w in base.We[L]]   # top-block experts (trainable)
-    be_p = [b.detach().float().clone().requires_grad_(True) for b in base.be[L]]
+    if bp_top:                                                                     # top-block experts trainable...
+        We_p = [w.detach().float().clone().requires_grad_(True) for w in base.We[L]]
+        be_p = [b.detach().float().clone().requires_grad_(True) for b in base.be[L]]
+    else:                                                                          # ...or frozen (BP still reaches E through it)
+        We_p = [w.detach().float() for w in base.We[L]]; be_p = [b.detach().float() for b in base.be[L]]
     Wlo = [[w.detach().float() for w in base.We[l]] for l in range(L)]             # lower experts (frozen constants)
     blo = [[b.detach().float() for b in base.be[l]] for l in range(L)]
     g = torch.Generator().manual_seed(Z.SEED)
@@ -42,7 +45,7 @@ def run_phase_e(base, baseA, Xtr, Ytr, Odata, cfg, N, lr=0.1, htask=64):
     b1 = torch.zeros(htask, device=Z.DEVICE, requires_grad=True)
     W2 = (torch.randn(htask, 2, generator=g)/math.sqrt(htask)).to(Z.DEVICE).requires_grad_(True)
     b2 = torch.zeros(2, device=Z.DEVICE, requires_grad=True)
-    params = [E_p] + We_p + be_p + [W1, b1, W2, b2]
+    params = [E_p] + (We_p + be_p if bp_top else []) + [W1, b1, W2, b2]
     for step in range(N):
         gi = torch.Generator().manual_seed(Z.SEED+step); ix = torch.randint(0, len(Xtr), (64,), generator=gi)
         xb, yb = Xtr[ix].to(Z.DEVICE), Ytr[ix].to(Z.DEVICE)
@@ -60,8 +63,9 @@ def run_phase_e(base, baseA, Xtr, Ytr, Odata, cfg, N, lr=0.1, htask=64):
             for p, gr in zip(params, grads):
                 if gr is not None: p -= lr*gr
     base.E = E_p.detach().to(cfg.td)                           # write back (for base forward / O-PPL)
-    for e in range(len(base.We[L])):
-        base.We[L][e] = We_p[e].detach().to(cfg.td); base.be[L][e] = be_p[e].detach().to(cfg.td)
+    if bp_top:
+        for e in range(len(base.We[L])):
+            base.We[L][e] = We_p[e].detach().to(cfg.td); base.be[L][e] = be_p[e].detach().to(cfg.td)
     head = (W1.detach(), b1.detach(), W2.detach(), b2.detach())
     def acc(Xc, Yc):
         c = 0
