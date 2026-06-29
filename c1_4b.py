@@ -51,38 +51,49 @@ def gen(encode, seq_len, n, seed):
 def _batches(Xc, Yc, bs):
     for i in range(0, len(Xc), bs): yield Xc[i:i+bs].to(Z.DEVICE), Yc[i:i+bs].to(Z.DEVICE)
 
-def train_head_linear(model, Xc, Yc, d, ncls=2, lr=0.2, bs=64):
-    g = torch.Generator().manual_seed(SEED)
-    Wc = (torch.randn(d, ncls, generator=g)/math.sqrt(d)).to(Z.DEVICE); bc = torch.zeros(ncls, device=Z.DEVICE)
+PARTITION = os.environ.get("ZG_C1_PARTITION", "0") == "1"      # default for the linear/zero-shot head
+
+def feat(model, xb, partition):
+    """Head input: frozen last-position rep h, optionally concatenated with pooled frozen embeddings
+    (2.2 structural partition -- recovers sequence info the frozen attention discarded; zero forgetting)."""
+    h, _, _ = model.forward(xb); h = h.float()
+    if not partition: return h
+    emb = model.E[xb].float(); pm = (xb != 0).float().unsqueeze(-1)
+    pooled = (emb*pm).sum(1)/(pm.sum(1)+1e-6)
+    return torch.cat([h, pooled], -1)
+
+def train_head_linear(model, Xc, Yc, d, ncls=2, lr=0.2, bs=64, partition=False):
+    fd = d*2 if partition else d; g = torch.Generator().manual_seed(SEED)
+    Wc = (torch.randn(fd, ncls, generator=g)/math.sqrt(fd)).to(Z.DEVICE); bc = torch.zeros(ncls, device=Z.DEVICE)
     for step in range(STEPS):
         gi = torch.Generator().manual_seed(SEED+step); ix = torch.randint(0, len(Xc), (bs,), generator=gi)
         xb, yb = Xc[ix].to(Z.DEVICE), Yc[ix].to(Z.DEVICE); B = xb.shape[0]
-        h, _, _ = model.forward(xb); lg = h.float() @ Wc + bc
+        f = feat(model, xb, partition); lg = f @ Wc + bc
         p = torch.softmax(lg, -1); p[torch.arange(B), yb] -= 1.0; p /= B
-        Wc = Wc - lr*(h.float().T @ p); bc = bc - lr*p.sum(0)
-    return ("lin", Wc, bc)
+        Wc = Wc - lr*(f.T @ p); bc = bc - lr*p.sum(0)
+    return ("lin", Wc, bc, partition)
 
-def train_head_mlp(model, Xc, Yc, d, ncls=2, lr=0.2, bs=64):
-    g = torch.Generator().manual_seed(SEED)
-    W1 = (torch.randn(d, d, generator=g)/math.sqrt(d)).to(Z.DEVICE); b1 = torch.zeros(d, device=Z.DEVICE)
+def train_head_mlp(model, Xc, Yc, d, ncls=2, lr=0.2, bs=64, partition=False):
+    fd = d*2 if partition else d; g = torch.Generator().manual_seed(SEED)
+    W1 = (torch.randn(fd, d, generator=g)/math.sqrt(fd)).to(Z.DEVICE); b1 = torch.zeros(d, device=Z.DEVICE)
     W2 = (torch.randn(d, ncls, generator=g)/math.sqrt(d)).to(Z.DEVICE); b2 = torch.zeros(ncls, device=Z.DEVICE)
     for step in range(STEPS):
         gi = torch.Generator().manual_seed(SEED+step); ix = torch.randint(0, len(Xc), (bs,), generator=gi)
         xb, yb = Xc[ix].to(Z.DEVICE), Yc[ix].to(Z.DEVICE); B = xb.shape[0]
-        h, _, _ = model.forward(xb); h = h.float()
-        z1 = h @ W1 + b1; a1 = torch.relu(z1); lg = a1 @ W2 + b2
+        f = feat(model, xb, partition)
+        z1 = f @ W1 + b1; a1 = torch.relu(z1); lg = a1 @ W2 + b2
         p = torch.softmax(lg, -1); p[torch.arange(B), yb] -= 1.0; p /= B
-        dW2 = a1.T @ p; db2 = p.sum(0); dz1 = (p @ W2.T) * (z1 > 0).float(); dW1 = h.T @ dz1; db1 = dz1.sum(0)
+        dW2 = a1.T @ p; db2 = p.sum(0); dz1 = (p @ W2.T) * (z1 > 0).float(); dW1 = f.T @ dz1; db1 = dz1.sum(0)
         W2 = W2 - lr*dW2; b2 = b2 - lr*db2; W1 = W1 - lr*dW1; b1 = b1 - lr*db1
-    return ("mlp", W1, b1, W2, b2)
+    return ("mlp", W1, b1, W2, b2, partition)
 
 def acc(model, head, Xc, Yc, mask=None, bs=64):
     if mask is not None: Xc, Yc = Xc[mask], Yc[mask]
     if len(Xc) == 0: return float("nan")
-    c = 0
+    part = head[-1]; c = 0
     for xb, yb in _batches(Xc, Yc, bs):
-        h, _, _ = model.forward(xb); h = h.float()
-        lg = (h @ head[1] + head[2]) if head[0] == "lin" else (torch.relu(h @ head[1] + head[2]) @ head[3] + head[4])
+        f = feat(model, xb, part)
+        lg = (f @ head[1] + head[2]) if head[0] == "lin" else (torch.relu(f @ head[1] + head[2]) @ head[3] + head[4])
         c += int(lg.argmax(-1).eq(yb).sum())
     return c/len(Xc)
 
@@ -103,17 +114,20 @@ def main():
     Xtr, Ytr, _ = gen(enc, cfg.seq_len, 6000, SEED+1)
     Xv, Yv, NG = gen(enc, cfg.seq_len, 1500, SEED+2)
     maj = max(float((Ytr == 0).float().mean()), float((Ytr == 1).float().mean()))
-    lin = train_head_linear(model, Xtr, Ytr, cfg.d_model); acc_lin = acc(model, lin, Xv, Yv)
-    mlp = train_head_mlp(model, Xtr, Ytr, cfg.d_model)
+    lin = train_head_linear(model, Xtr, Ytr, cfg.d_model, partition=False); acc_lin = acc(model, lin, Xv, Yv)
+    mlp = train_head_mlp(model, Xtr, Ytr, cfg.d_model, partition=False)       # frozen-h head (zero-shot baseline)
     acc_mlp = acc(model, mlp, Xv, Yv); acc_neg = acc(model, mlp, Xv, Yv, NG.bool()); acc_pos = acc(model, mlp, Xv, Yv, ~NG.bool())
+    part = train_head_mlp(model, Xtr, Ytr, cfg.d_model, partition=True)       # 2.2 structural partition head [h, pooled-emb]
+    acc_part = acc(model, part, Xv, Yv); acc_part_neg = acc(model, part, Xv, Yv, NG.bool())
     ppl_after = Z.evaluate(model, Xlm, Ylm, cfg, batches=10**9)
-    mlp2 = train_head_mlp(model, Xtr, Ytr, cfg.d_model); acc_mlp2 = acc(model, mlp2, Xv, Yv)
+    mlp2 = train_head_mlp(model, Xtr, Ytr, cfg.d_model, partition=False); acc_mlp2 = acc(model, mlp2, Xv, Yv)
 
     summary = dict(checkpoint=str(ck), config=cfg.name, param_gigaparams=round(cfg.param_count()/1e9, 3),
                    corpus=data["corpus"], task="compositional-sentiment (head-only)", head="2-layer MLP (hand-derived)",
                    majority_baseline=round(maj, 3), linear_head_acc=round(acc_lin, 4),
                    mlp_head_acc=round(acc_mlp, 4), mlp_head_acc_rerun=round(acc_mlp2, 4),
                    acc_negated=round(acc_neg, 4), acc_not_negated=round(acc_pos, 4),
+                   partition_head_acc=round(acc_part, 4), partition_acc_negated=round(acc_part_neg, 4),  # 2.2
                    lm_ppl_before=round(ppl_before, 3), lm_ppl_after=round(ppl_after, 3),
                    zero_forgetting=bool(abs(ppl_after-ppl_before) < 1e-6),
                    deterministic=bool(abs(acc_mlp-acc_mlp2) < 1e-9), zero_autograd=not torch.is_grad_enabled(),

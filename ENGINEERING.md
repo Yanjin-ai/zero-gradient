@@ -15,8 +15,11 @@
 | `python3 ckpt_verify.py` | checkpoint save/reload 正确性 | reload==best |
 | `python3 c1_posttrain.py` | C.1 pipeline（topic 任务，head-only） | 5/5 |
 | `python3 c1_sentiment.py` | 组合情感 in-domain（线性 vs MLP 头） | MLP 100% |
-| `python3 c1_4b.py` | 从 best_ckpt.pt 重载 + head-only MLP 情感（小/4B 同路径） | `runs/c1_run_summary.json` |
-| `python3 adapt_sentiment.py` | v1.1 in-domain 适配 + 遗忘权衡扫描 | 权衡表 |
+| `python3 c1_4b.py` | 从 best_ckpt.pt 重载 + head-only MLP 情感（`ZG_C1_PARTITION=1` 用 2.2 分区头 [h,pooled]） | `runs/c1_run_summary.json` |
+| `python3 adapt_sentiment.py` | v1.1 in-domain 适配 + 遗忘权衡扫描（N=0/150/400/1000） | 权衡表 |
+| `python3 adapt_mitigate.py` | v1.1 缓解 2.1：冻结 LM 头 / backbone 重要性加权 | acc-vs-遗忘表 |
+| `python3 adapt_partition.py` | v1.1 缓解 2.2：结构分区（原模型全冻，新头读冻结特征 → 零遗忘） | acc 表 |
+| `python3 adapt_4b.py` | 4B 域适配 + C.1（带缓解 `ZG_ADAPT_FREEZE_HEADS=1` 等） | `runs/adapt_run_summary.json` |
 | `python3 track_a_probe.py` / `track_a_diag.py` | Track A（attention）负结果探针/诊断 | — |
 
 实验开关（env，默认 off）：`ZG_TOKENIZER=word|bpe`、`ZG_HEAD=linear|mlp`、`ZG_AUX=<f>`、`ZG_ATTN=1`/`ZG_ATTN_LR`/`ZG_ATTN_WK`、`ZG_CKPT=1`、`ZG_C1_STEPS=<int>`、`ZG_RUN_MIN`、`ZG_SMOKE=1`。
