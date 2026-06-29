@@ -302,8 +302,8 @@ class ZeroGradMoE:
         for k, v in sd.items():
             setattr(self, k, None)                             # free the old (random-init) tensor FIRST so we never
             if CUDA: torch.cuda.empty_cache()                  # hold both copies -> avoids ~2x (16GB) GPU peak at 4B
-            setattr(self, k, _map_t(v, lambda t: t.to(DEVICE).to(self.cfg.td)))
-        return self
+            setattr(self, k, _map_t(v, lambda t: t.detach().to(DEVICE).to(self.cfg.td).clone()))  # CLONE: never alias sd
+        return self                                            # (on CPU .to() is a no-op -> in-place updates would corrupt sd)
 
 
 def _map_t(o, fn):                                             # recursively map a fn over tensors in nested list/dict

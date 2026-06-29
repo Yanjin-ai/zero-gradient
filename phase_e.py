@@ -22,17 +22,19 @@ def block_fwd(hin, a, We, be, k):                              # functional MoE 
         out = out.index_add(0, idx, torch.relu(hin[idx] @ We[e] + be[e]))
     return hin + out/k
 
-def ctx_fwd(base, xb, E_p):                                    # differentiable context with trainable embedding E_p
+def ctx_fwd(base, xb, E_p, Wq=None, Wk=None):                  # differentiable context (embedding, optionally attn, trainable)
     T = xb.shape[1]; emb = E_p[xb] + base.pos[:T].unsqueeze(0)
-    q = emb @ base.Wq; k = emb @ base.Wk
+    q = emb @ (base.Wq if Wq is None else Wq); k = emb @ (base.Wk if Wk is None else Wk)
     sc = (q @ k.transpose(1, 2))/math.sqrt(emb.shape[-1])
     m = torch.triu(torch.ones(T, T, device=xb.device), 1).bool()
     att = torch.softmax(sc.masked_fill(m, float("-inf")), -1)
     return (emb + att @ emb)[:, -1], emb
 
-def run_phase_e(base, baseA, Xtr, Ytr, Odata, cfg, N, lr=0.1, htask=64, bp_top=True):
+def run_phase_e(base, baseA, Xtr, Ytr, Odata, cfg, N, lr=0.1, htask=64, bp_top=True, ncls=2, bp_attn=False):
     base.load_state_dict(baseA); L = cfg.n_layers-1; d = cfg.d_model
     E_p = base.E.detach().float().clone().requires_grad_(True)                     # embedding (trainable; the real lever)
+    Wq_p = base.Wq.detach().float().clone().requires_grad_(True) if bp_attn else None   # attention (for relational tasks)
+    Wk_p = base.Wk.detach().float().clone().requires_grad_(True) if bp_attn else None
     if bp_top:                                                                     # top-block experts trainable...
         We_p = [w.detach().float().clone().requires_grad_(True) for w in base.We[L]]
         be_p = [b.detach().float().clone().requires_grad_(True) for b in base.be[L]]
@@ -43,17 +45,17 @@ def run_phase_e(base, baseA, Xtr, Ytr, Odata, cfg, N, lr=0.1, htask=64, bp_top=T
     g = torch.Generator().manual_seed(Z.SEED)
     W1 = (torch.randn(d, htask, generator=g)/math.sqrt(d)).to(Z.DEVICE).requires_grad_(True)
     b1 = torch.zeros(htask, device=Z.DEVICE, requires_grad=True)
-    W2 = (torch.randn(htask, 2, generator=g)/math.sqrt(htask)).to(Z.DEVICE).requires_grad_(True)
-    b2 = torch.zeros(2, device=Z.DEVICE, requires_grad=True)
-    params = [E_p] + (We_p + be_p if bp_top else []) + [W1, b1, W2, b2]
+    W2 = (torch.randn(htask, ncls, generator=g)/math.sqrt(htask)).to(Z.DEVICE).requires_grad_(True)
+    b2 = torch.zeros(ncls, device=Z.DEVICE, requires_grad=True)
+    params = [E_p] + ([Wq_p, Wk_p] if bp_attn else []) + (We_p + be_p if bp_top else []) + [W1, b1, W2, b2]
     for step in range(N):
         gi = torch.Generator().manual_seed(Z.SEED+step); ix = torch.randint(0, len(Xtr), (64,), generator=gi)
         xb, yb = Xtr[ix].to(Z.DEVICE), Ytr[ix].to(Z.DEVICE)
         with torch.no_grad():                                  # routing is non-diff (argsort) -> fix assignments per step
             _, rrep = base.context(xb)
             al = [base.route(rrep, base.C[l])[0] for l in range(cfg.n_layers)]
-        with torch.enable_grad():                              # real BP through embedding -> lower blocks -> top block -> head
-            h, _ = ctx_fwd(base, xb, E_p)
+        with torch.enable_grad():                              # real BP through embedding (+attn) -> blocks -> head
+            h, _ = ctx_fwd(base, xb, E_p, Wq_p, Wk_p)
             for l in range(L): h = block_fwd(h, al[l], Wlo[l], blo[l], cfg.k_route)   # frozen experts (constants)
             htop = block_fwd(h, al[L], We_p, be_p, cfg.k_route)                        # trainable top block
             lg = torch.relu(htop @ W1 + b1) @ W2 + b2
@@ -63,6 +65,7 @@ def run_phase_e(base, baseA, Xtr, Ytr, Odata, cfg, N, lr=0.1, htask=64, bp_top=T
             for p, gr in zip(params, grads):
                 if gr is not None: p -= lr*gr
     base.E = E_p.detach().to(cfg.td)                           # write back (for base forward / O-PPL)
+    if bp_attn: base.Wq = Wq_p.detach().to(cfg.td); base.Wk = Wk_p.detach().to(cfg.td)
     if bp_top:
         for e in range(len(base.We[L])):
             base.We[L][e] = We_p[e].detach().to(cfg.td); base.be[L][e] = be_p[e].detach().to(cfg.td)
