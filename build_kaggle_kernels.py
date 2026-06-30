@@ -108,8 +108,9 @@ pn.cells = [
     wf("kaggle_zerograd_moe.py"), wf("c1_4b.py"), wf("phase_e_4b.py"), wf("phasee_nli_4b.py"),
     nbf.v4.new_code_cell(
         "import os, json\n"
-        "os.environ.setdefault('ZG_E_STEPS', '1000')\n"
+        "os.environ.setdefault('ZG_E_STEPS', '3000')        # bigger-budget retry\n"
         "os.environ.setdefault('ZG_E_LR', '0.1')\n"
+        "os.environ.setdefault('ZG_E_ATTN_LR', '0.5')       # crank attention (relational alignment)\n"
         "import phasee_nli_4b\n"
         "print(json.dumps(phasee_nli_4b.main(), indent=2, default=float))"),
 ]

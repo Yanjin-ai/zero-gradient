@@ -18,6 +18,7 @@ import phase_e_4b as P4
 
 SEED = Z.SEED
 STEPS = int(os.environ.get("ZG_E_STEPS", 1000)); LR = float(os.environ.get("ZG_E_LR", 0.1))
+ATTN_LR = float(os.environ.get("ZG_E_ATTN_LR", str(LR)))      # higher attn lr for relational tasks (bigger-budget retry)
 SUBJ = ["man", "dog", "car", "book", "city", "king", "river", "house"]
 REL = {"bigger": "smaller", "smaller": "bigger"}; RELS = list(REL); NCLS = 3
 
@@ -66,6 +67,7 @@ def bp_adapt(base, baseA, Xtr, Ytr, cfg, steps, lr, bp_attn, ncls):   # BP embed
     W1 = (torch.randn(d, ht, generator=g)/math.sqrt(d)).to(Z.DEVICE).requires_grad_(True); b1 = torch.zeros(ht, device=Z.DEVICE, requires_grad=True)
     W2 = (torch.randn(ht, ncls, generator=g)/math.sqrt(ht)).to(Z.DEVICE).requires_grad_(True); b2 = torch.zeros(ncls, device=Z.DEVICE, requires_grad=True)
     params = [E_p] + ([Wq_p, Wk_p] if bp_attn else []) + [W1, b1, W2, b2]
+    lrs = [lr] + ([ATTN_LR, ATTN_LR] if bp_attn else []) + [lr, lr, lr, lr]   # attention gets its own (higher) lr
     for step in range(steps):
         gi = torch.Generator().manual_seed(SEED+step); ix = torch.randint(0, len(Xtr), (64,), generator=gi)
         xb, yb = Xtr[ix].to(Z.DEVICE), Ytr[ix].to(Z.DEVICE)
@@ -77,8 +79,8 @@ def bp_adapt(base, baseA, Xtr, Ytr, cfg, steps, lr, bp_attn, ncls):   # BP embed
             lg = torch.relu(h @ W1 + b1) @ W2 + b2; loss = torch.nn.functional.cross_entropy(lg, yb)
         grads = torch.autograd.grad(loss, params, allow_unused=True)
         with torch.no_grad():
-            for p, gr in zip(params, grads):
-                if gr is not None: p -= lr*gr
+            for p, lri, gr in zip(params, lrs, grads):
+                if gr is not None: p -= lri*gr
     base.E = E_p.detach().to(cfg.td)
     if bp_attn: base.Wq = Wq_p.detach().to(cfg.td); base.Wk = Wk_p.detach().to(cfg.td)
 
@@ -102,7 +104,7 @@ def main():
                       Z.evaluate(base, Xlm, Ylm, cfg, batches=10**9))
 
     summary = dict(checkpoint=str(ck), param_gigaparams=round(cfg.param_count()/1e9, 3), task="NLI-3class",
-                   branch="Phase E hybrid BP (research)", majority_baseline=round(maj, 3), bp_steps=STEPS, bp_lr=LR,
+                   branch="Phase E hybrid BP (research)", majority_baseline=round(maj, 3), bp_steps=STEPS, bp_lr=LR, attn_lr=ATTN_LR,
                    zeroshot_acc=round(acc_zs, 4), mixedbp_emb_acc=round(rows["mixedbp_emb"][0], 4),
                    mixedbp_emb_attn_acc=round(rows["mixedbp_emb_attn"][0], 4), wiki_ppl_zeroshot=round(ppl0, 3),
                    wiki_ppl_emb=round(rows["mixedbp_emb"][1], 3), wiki_ppl_emb_attn=round(rows["mixedbp_emb_attn"][1], 3),
