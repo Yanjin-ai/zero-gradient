@@ -8,7 +8,29 @@
 
 ## 0. 一句话
 
-在**单 T4 / 3h / 无全局梯度**约束下，自研一个**内容路由的 MoE**，用**逐专家局部规则**训练 **4.156B 常驻参数**模型：每步只更新 **0.42% 的专家**（sparse *learning*，非仅 sparse forward），峰值显存 **8.3GB**（BP 训 4B 需 ~31GB → T4 直接 OOM）。在 WikiText-103 上 test perplexity ≈ **1360**、7/7 合规门全过、确定性可复现。**核心价值是"4B 可训练的可行性 + 系统效率"，不是"调度更聪明降 PPL"——后者经诚实实验被否。**
+在**单 T4 / 3h / 无全局梯度**约束下，自研一个**内容路由的 MoE**，用**逐专家局部规则**训练 **4.156B 常驻参数**模型：每步只更新 **0.42% 的专家**（sparse *learning*，非仅 sparse forward），峰值显存 **8.3GB**（BP 训 4B 需 ~31GB → T4 直接 OOM）。在 WikiText-103 上 test perplexity ≈ **1391**（BPE subword，早停）/ **1355**（跑满预算）、7/7 合规门全过、确定性可复现。**核心价值是"4B 可训练的可行性 + 系统效率"，不是"调度更聪明降 PPL"——后者经诚实实验被否。** 后续 Phase D–F 的能力边界与少量 BP 研究见 §0.5。
+
+---
+
+## 0.5 当前阶段技术总结（Phase D–F + 架构发现，2026-06）
+
+> 项目已从"能否跑通"推进到"ZeroBP 的能力边界在哪、少量 BP 能补到哪、架构瓶颈是什么"。以下是当前定论（4B 真实 T4 + 小配置交叉验证；细节见 [项目总档案.md](项目总档案.md) §1.5🔒 与 [Phase-F charter.md](Phase-F%20charter.md) §10🔒）。
+
+**① ZeroBP 预训练成立，但有清晰的能力边界。** 纯 ZeroBP 4.16B 在 WikiText-103 上可训得有用 LM（test ppl ≈**1391**（早停）/≈**1355**（跑满预算），BPE+MLP 头，零 autograd、7/7 门）。但在后训练上，**能力随任务结构复杂度递减**（任务-方法矩阵）：
+
+| 任务 | 结构 | 4B zero-shot | 4B 少量 BP（embedding） | 小配置最好 |
+|---|---|---|---|---|
+| 情感 | bag 组合 | 60% | **79%** | 100% |
+| NLI | 关系对齐 | 33%(chance) | 33%(不转移) | 62% |
+| 2 步算术 | 多步计算 | — | gate 失败 | ~chance |
+
+**② 少量 BP 部分有效——但是 embedding 在扛，且有限。** 在情感（bag 组合）上，少量真实 BP（仅 embedding+头）把 4B 从 60%→**79%**、近零遗忘，而 6 种纯 ZeroBP 后训练全 plateau ~62%——**墙的本质是 BP vs ZeroBP**。但对关系对齐（NLI），三条 ZeroBP 路线（更丰富数据 +2pp / 结构辅助目标 +0.5pp / attention 局部规则失败）都装不进关系几何；少量 BP 在小配置能撬到 59%（**公平读出下是 embedding 扛，attention 只 +0.3pp**），但**不转移到 4B**（4B NLI 即便 3000 步 +高 attention lr 仍 chance）。
+
+**③ 架构瓶颈新线索：末位塌缩。** 模型在 `context()` 里把**整个序列塌缩成"最后一个位置"一个向量**，所有 block 都在这一个向量上算。对关系/对齐/多步任务，信息很可能在塌缩时丢失——这比"attention 弱"或"BP 不够"更根本，是关系任务难的疑似真因。
+
+**④ 下一阶段（Phase G 方向）需要动结构归纳偏置。** 要靠拢现代 LLM 的关系/多步能力，"ZeroBP backbone + 少量顶层 BP"不够，需要更强的结构归纳偏置：**不塌缩的序列读出（pooling/多位置）/ 真正可训练的 attention / 更深 BP**——这超出当前 Hybrid 边界，留作 Phase G。
+
+**提交版隔离（红线）**：官方 Kaggle 提交 = 纯 ZeroBP 4B（`kaggle_run`，见 [SUBMISSION.md](SUBMISSION.md)），全程零 autograd；所有 Phase E/F 的少量 BP 都在**独立研究脚本 + 默认 off**，不进提交。
 
 ---
 
