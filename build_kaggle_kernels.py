@@ -15,6 +15,25 @@ KSPEC = {"kernelspec": {"name": "python3", "display_name": "Python 3", "language
          "language_info": {"name": "python", "pygments_lexer": "ipython3"}}
 def wf(fname): return nbf.v4.new_code_cell(f"%%writefile {fname}\n" + (root/fname).read_text())
 
+# ---- OFFICIAL SUBMISSION kernel: pure ZeroBP 4B (BPE+MLP+Phase C), NO env flags, NO research code path ----
+sub = nbf.v4.new_notebook()
+sub.cells = [
+    nbf.v4.new_markdown_cell(
+        "# Post-Backprop ZeroGrad MoE — official submission (pure ZeroBP)\n"
+        "4.16B resident, **zero global backprop / zero autograd** (`torch.set_grad_enabled(False)` + asserted), "
+        "deterministic, single T4 / 3h. Default config = BPE subword + 2-layer MLP readout head + Phase C "
+        "schedule (the documented best: WikiText-103 test ppl ~1391 early-stop / ~1355 full-budget). "
+        "NO research env flags are set -> this is the strict ZeroBP entry. Attach the WikiText-103 dataset."),
+    wf("kaggle_zerograd_moe.py"),
+    nbf.v4.new_code_cell(
+        "import runpy\n"
+        "# no ZG_* env flags -> default = pure ZeroBP BPE+MLP+Phase C; run() asserts zero autograd + 7 gates\n"
+        "runpy.run_path('kaggle_zerograd_moe.py', run_name='__main__')"),
+]
+sub.metadata.update(KSPEC)
+(root/"kaggle_run").mkdir(exist_ok=True)
+nbf.write(sub, str(root/"kaggle_run"/"kaggle_run.ipynb"))
+
 # ---- checkpoint kernel: 4B pretrain with ZG_CKPT=1 -> best_ckpt.pt ----
 ckpt = nbf.v4.new_notebook()
 ckpt.cells = [
@@ -118,6 +137,6 @@ pn.metadata.update(KSPEC)
 (root/"kaggle_phasee_nli").mkdir(exist_ok=True)
 nbf.write(pn, str(root/"kaggle_phasee_nli"/"phasee_nli_kernel.ipynb"))
 
-for p in ["kaggle_ckpt/ckpt_kernel.ipynb", "kaggle_c1/c1_kernel.ipynb", "kaggle_adapt/adapt_kernel.ipynb",
-          "kaggle_phase_e/phase_e_kernel.ipynb", "kaggle_phasee_nli/phasee_nli_kernel.ipynb"]:
+for p in ["kaggle_run/kaggle_run.ipynb", "kaggle_ckpt/ckpt_kernel.ipynb", "kaggle_c1/c1_kernel.ipynb",
+          "kaggle_adapt/adapt_kernel.ipynb", "kaggle_phase_e/phase_e_kernel.ipynb", "kaggle_phasee_nli/phasee_nli_kernel.ipynb"]:
     print(f"wrote {p} ({(root/p).stat().st_size//1024} KB)")
