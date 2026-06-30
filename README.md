@@ -12,6 +12,8 @@
 
 ---
 
+> **文档地图**：锁定结论索引 [MASTER_ARCHIVE.md](MASTER_ARCHIVE.md)｜中文深度总档 [项目总档案.md](项目总档案.md)｜架构 v1.0/v2.0 边界 [ARCHITECTURE.md](ARCHITECTURE.md)｜提交完整性 [SUBMISSION.md](SUBMISSION.md)｜实验台账 [EXPERIMENT_LEDGER.md](EXPERIMENT_LEDGER.md)｜决策记录 [docs/adr/](docs/adr/)｜工程规范 [ENGINEERING.md](ENGINEERING.md)。
+
 ## 0.5 当前阶段技术总结（Phase D–F + 架构发现，2026-06）
 
 > 项目已从"能否跑通"推进到"ZeroBP 的能力边界在哪、少量 BP 能补到哪、架构瓶颈是什么"。以下是当前定论（4B 真实 T4 + 小配置交叉验证；细节见 [项目总档案.md](项目总档案.md) §1.5🔒 与 [Phase-F charter.md](Phase-F%20charter.md) §10🔒）。
