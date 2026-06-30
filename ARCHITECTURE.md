@@ -29,8 +29,8 @@ d=1024, V=32000, seq_len=64, n_layers=4, n_experts=950/层, k_route=2, k_update=
 
 | 方向 | 【v2.0 OPEN】允许动什么 | 目的 | 先验门槛 |
 |---|---|---|---|
-| **不塌缩序列读出（首选）** | 把 `[:, -1]` 换成 pooling / 多位置 / 注意力池化读出头；blocks 读多位置而非单向量 | 保住跨位置信息，直攻关系/多步瓶颈 | 小配置 NLI/算术 zero-shot 是否松动；最便宜最对症 |
-| **真正可训练 attention** | Wq/Wk(/Wo) 可训（ZeroBP 新规则 或 v2.0 少量 BP） | 跨句对齐、长程依赖 | 单调/确定/route-drift 不爆；句对小任务提升 |
+| ~~不塌缩序列读出~~ **（已证伪为瓶颈，commit 见 ledger）** | mean/all-pos/concat 读出（在冻结 base 上测） | 曾以为保跨位置信息能解关系任务 | **【FACT】Phase G `v2_readout.py`：不升反降（mean/all-pos 即 chance）→ 关系结构不在冻结表示，读出不是杠杆** |
+| **真正可训练 attention（现首选）** | Wq/Wk(/Wo) 可训（ZeroBP 新规则 或 v2.0 少量 BP） | 跨句对齐、长程依赖——读出证伪后**指向的真杠杆** | 单调/确定/route-drift 不爆；句对小任务 zero-shot 脱离 49% |
 | **更深 / 更多层 BP** | 顶层多个 block 的 BP（超出 Phase F 顶层 1–2 边界） | 顺序计算能力 | 小配置算术是否脱离 chance |
 
 ## 4. v2.0 硬规则（必须遵守）

@@ -50,7 +50,8 @@
 ## 6. 架构发现 + 提交修复
 | 项 | 结果 [FACT] | commit |
 |---|---|---|
-| 末位塌缩（架构线索） | `context()` 把序列塌成单 [B,d] 向量 → 疑似关系任务瓶颈 [INTERP] | `d4f35df` |
+| 末位塌缩（架构线索） | `context()` 把序列塌成单 [B,d] 向量 [FACT 代码] → 曾疑似关系瓶颈 [INTERP] | `d4f35df` |
+| **Phase G v2.0 不塌缩读出（`v2_readout.py`）** | 冻结 base 换 mean/all-pos/concat：last-h 50.4 / mean 34.9 / all-pos 32.9 / concat 47.5%——**不升反降，证伪"塌缩=瓶颈"** [FACT]；真瓶颈=冻结 attention 不对齐 [INTERP] → 杠杆转可训练 attention | (本轮) |
 | **提交修复** | `kaggle_run.ipynb` 曾内嵌 pre-D-1 word-level 快照；已从当前代码重生成（bpe+mlp，纯 ZeroBP） | `ef7f213` |
 | load_state_dict 别名 bug 修复 | clone-on-load；`selfcheck.py` 守护；勘误已应用 | `66d5cc4` |
 
