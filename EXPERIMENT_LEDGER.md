@@ -52,6 +52,8 @@
 |---|---|---|
 | 末位塌缩（架构线索） | `context()` 把序列塌成单 [B,d] 向量 [FACT 代码] → 曾疑似关系瓶颈 [INTERP] | `d4f35df` |
 | **Phase G v2.0 不塌缩读出（`v2_readout.py`）** | 冻结 base 换 mean/all-pos/concat：last-h 50.4 / mean 34.9 / all-pos 32.9 / concat 47.5%——**不升反降，证伪"塌缩=瓶颈"** [FACT]；真瓶颈=冻结 attention 不对齐 [INTERP] → 杠杆转可训练 attention | (本轮) |
+| **Phase G v2.0 可训练 attention 隔离（`v2_attn.py`）** | 同 F1 base + 公平新鲜闭式头；NLI 标签 CE 直接监督。冻结 emb、**只训 Wq/Wk**：51.3%→**51.3%（+0.0pp）**（已验 ‖dWq‖≈0.080/‖dWk‖≈0.079 真动、‖dE‖=0 真冻）。参考臂复现锁定 H1：emb-only 58.8 / emb+attn 59.1%。→ **可训练 attention 单独不是杠杆，59.1% 全是 embedding 的功劳，attention 真实边际=0** [FACT]；ADR-004"真杠杆=可训练 attention"被**证伪** [INTERP] | (本轮, post-`eeb2b09`) |
+| **Phase G v2.0 更深 BP 探针（`v2_deepbp.py`，EXPLORATION）** | gen_O base + 公平新鲜闭式头；放开 BP 深度（emb→+top-block→+ALL-blocks→+attn）。**NLI**：floor 49.1→emb 57.9→emb+top **64.3**→emb+all 63.9→emb+all+attn **65.7%**（**深 BP +16.5pp over floor / +7.8pp over 浅 emb**）。**算术**：floor 24.7→所有 BP 臂 **19–21%（chance）**，任何深度都装不进。已验深臂两 block 各 ~22-23/48 专家真训。→ [FACT] **关系：深 BP 在小配置有真信号（小配置上限是 BP 深度的函数，非绝对）；多步：任何深度仍 chance**。[INTERP] 4B 转移先验弱（NLI 4B 已锁 chance），未重测 4B | (本轮, post-`eeb2b09`) |
 | **提交修复** | `kaggle_run.ipynb` 曾内嵌 pre-D-1 word-level 快照；已从当前代码重生成（bpe+mlp，纯 ZeroBP） | `ef7f213` |
 | load_state_dict 别名 bug 修复 | clone-on-load；`selfcheck.py` 守护；勘误已应用 | `66d5cc4` |
 

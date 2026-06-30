@@ -30,9 +30,10 @@ def ctx_fwd(base, xb, E_p, Wq=None, Wk=None):                  # differentiable 
     att = torch.softmax(sc.masked_fill(m, float("-inf")), -1)
     return (emb + att @ emb)[:, -1], emb
 
-def run_phase_e(base, baseA, Xtr, Ytr, Odata, cfg, N, lr=0.1, htask=64, bp_top=True, ncls=2, bp_attn=False):
+def run_phase_e(base, baseA, Xtr, Ytr, Odata, cfg, N, lr=0.1, htask=64, bp_top=True, ncls=2, bp_attn=False, bp_emb=True, bp_deep=False):
     base.load_state_dict(baseA); L = cfg.n_layers-1; d = cfg.d_model
-    E_p = base.E.detach().float().clone().requires_grad_(True)                     # embedding (trainable; the real lever)
+    E_p = base.E.detach().float()                                                  # embedding (the dominant lever)
+    if bp_emb: E_p = E_p.clone().requires_grad_(True)                              # ...trainable, OR freeze (bp_emb=False) to isolate attention (Phase G / v2_attn)
     Wq_p = base.Wq.detach().float().clone().requires_grad_(True) if bp_attn else None   # attention (for relational tasks)
     Wk_p = base.Wk.detach().float().clone().requires_grad_(True) if bp_attn else None
     if bp_top:                                                                     # top-block experts trainable...
@@ -40,14 +41,19 @@ def run_phase_e(base, baseA, Xtr, Ytr, Odata, cfg, N, lr=0.1, htask=64, bp_top=T
         be_p = [b.detach().float().clone().requires_grad_(True) for b in base.be[L]]
     else:                                                                          # ...or frozen (BP still reaches E through it)
         We_p = [w.detach().float() for w in base.We[L]]; be_p = [b.detach().float() for b in base.be[L]]
-    Wlo = [[w.detach().float() for w in base.We[l]] for l in range(L)]             # lower experts (frozen constants)
-    blo = [[b.detach().float() for b in base.be[l]] for l in range(L)]
+    if bp_deep:                                                                    # deeper-BP probe (v2_deepbp): lower blocks ALSO trainable
+        Wlo = [[w.detach().float().clone().requires_grad_(True) for w in base.We[l]] for l in range(L)]
+        blo = [[b.detach().float().clone().requires_grad_(True) for b in base.be[l]] for l in range(L)]
+    else:                                                                          # default: lower experts frozen constants
+        Wlo = [[w.detach().float() for w in base.We[l]] for l in range(L)]
+        blo = [[b.detach().float() for b in base.be[l]] for l in range(L)]
     g = torch.Generator().manual_seed(Z.SEED)
     W1 = (torch.randn(d, htask, generator=g)/math.sqrt(d)).to(Z.DEVICE).requires_grad_(True)
     b1 = torch.zeros(htask, device=Z.DEVICE, requires_grad=True)
     W2 = (torch.randn(htask, ncls, generator=g)/math.sqrt(htask)).to(Z.DEVICE).requires_grad_(True)
     b2 = torch.zeros(ncls, device=Z.DEVICE, requires_grad=True)
-    params = [E_p] + ([Wq_p, Wk_p] if bp_attn else []) + (We_p + be_p if bp_top else []) + [W1, b1, W2, b2]
+    lo_params = ([w for ws in Wlo for w in ws] + [b for bs in blo for b in bs]) if bp_deep else []
+    params = ([E_p] if bp_emb else []) + ([Wq_p, Wk_p] if bp_attn else []) + lo_params + (We_p + be_p if bp_top else []) + [W1, b1, W2, b2]
     for step in range(N):
         gi = torch.Generator().manual_seed(Z.SEED+step); ix = torch.randint(0, len(Xtr), (64,), generator=gi)
         xb, yb = Xtr[ix].to(Z.DEVICE), Ytr[ix].to(Z.DEVICE)
@@ -64,11 +70,15 @@ def run_phase_e(base, baseA, Xtr, Ytr, Odata, cfg, N, lr=0.1, htask=64, bp_top=T
         with torch.no_grad():
             for p, gr in zip(params, grads):
                 if gr is not None: p -= lr*gr
-    base.E = E_p.detach().to(cfg.td)                           # write back (for base forward / O-PPL)
+    if bp_emb: base.E = E_p.detach().to(cfg.td)                # write back (for base forward / O-PPL); frozen emb unchanged
     if bp_attn: base.Wq = Wq_p.detach().to(cfg.td); base.Wk = Wk_p.detach().to(cfg.td)
     if bp_top:
         for e in range(len(base.We[L])):
             base.We[L][e] = We_p[e].detach().to(cfg.td); base.be[L][e] = be_p[e].detach().to(cfg.td)
+    if bp_deep:                                                # write back lower blocks (deeper-BP probe)
+        for l in range(L):
+            for e in range(len(base.We[l])):
+                base.We[l][e] = Wlo[l][e].detach().to(cfg.td); base.be[l][e] = blo[l][e].detach().to(cfg.td)
     head = (W1.detach(), b1.detach(), W2.detach(), b2.detach())
     def acc(Xc, Yc):
         c = 0

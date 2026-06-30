@@ -30,8 +30,8 @@ d=1024, V=32000, seq_len=64, n_layers=4, n_experts=950/层, k_route=2, k_update=
 | 方向 | 【v2.0 OPEN】允许动什么 | 目的 | 先验门槛 |
 |---|---|---|---|
 | ~~不塌缩序列读出~~ **（已证伪为瓶颈，commit 见 ledger）** | mean/all-pos/concat 读出（在冻结 base 上测） | 曾以为保跨位置信息能解关系任务 | **【FACT】Phase G `v2_readout.py`：不升反降（mean/all-pos 即 chance）→ 关系结构不在冻结表示，读出不是杠杆** |
-| **真正可训练 attention（现首选）** | Wq/Wk(/Wo) 可训（ZeroBP 新规则 或 v2.0 少量 BP） | 跨句对齐、长程依赖——读出证伪后**指向的真杠杆** | 单调/确定/route-drift 不爆；句对小任务 zero-shot 脱离 49% |
-| **更深 / 更多层 BP** | 顶层多个 block 的 BP（超出 Phase F 顶层 1–2 边界） | 顺序计算能力 | 小配置算术是否脱离 chance |
+| ~~真正可训练 attention~~ **（已证伪，commit 见 ledger）** | Wq/Wk 可训（v2.0 少量 BP，NLI 标签 CE） | 曾以为是读出证伪后指向的真杠杆 | **【FACT】Phase G `v2_attn.py`：冻 emb、只训 Wq/Wk → 51.3%→51.3%（+0.0pp，已验权重真动）；emb+attn 的 59.1% 全是 embedding。可训练 attention 单独零作用** |
+| ~~更深 / 更多层 BP~~ **（已测，`v2_deepbp.py`）** | 所有 block 的 experts 全 BP（emb+all+attn） | 顺序计算 / 关系对齐 | **【FACT】关系 NLI：49.1→**65.7%**（深 BP 真有信号，但 4B 转移先验弱）；多步算术：任何深度仍 19–21%（chance）= 不可安装** |
 
 ## 4. v2.0 硬规则（必须遵守）
 1. **【LOCKED】不污染提交版**：v2.0 改动一律新建独立文件/路径（如 `v2_*.py`），默认 off；`kaggle_zerograd_moe.py` 默认路径必须仍 `6.251` / 零 autograd / 7 门。改后必跑 `python3 kaggle_zerograd_moe.py` + `selfcheck.py` 复核。
