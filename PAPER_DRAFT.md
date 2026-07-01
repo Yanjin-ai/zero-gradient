@@ -1,3 +1,6 @@
+<!-- **English** | [中文](PAPER_DRAFT.zh.md) -->
+**English** | [中文 →](PAPER_DRAFT.zh.md)
+
 # ZeroBP at Scale and the Architecture of Capability: A Boundary Study of a Backprop-Free 4B Language Model, with a Trainable-Attention Control
 
 **Draft technical report — v0.1.** Target: workshop paper (8–12 pp). All numbers are traceable to the experiment ledger and per-run summaries in the accompanying repository; commit hashes are given where a result is locked.

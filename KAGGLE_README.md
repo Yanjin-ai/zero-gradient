@@ -1,3 +1,6 @@
+<!-- **English** | [中文](KAGGLE_README.zh.md) -->
+**English** | [中文 →](KAGGLE_README.zh.md)
+
 # Post-Backprop Challenge — ZeroGrad MoE (pure ZeroBP 4B)
 
 **Submission notebook top-matter / reviewer README.** This entry trains a **4.16-billion-parameter**

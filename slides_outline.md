@@ -1,3 +1,6 @@
+<!-- **English** | [中文](slides_outline.zh.md) -->
+**English** | [中文 →](slides_outline.zh.md)
+
 # Slides outline — ZeroBP-4B boundary study + Phase H control (11 slides)
 
 Talk length ~12–15 min. Key visual assets: capability radar (`runs/track1_radar.png`), the task×method

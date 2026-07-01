@@ -1,3 +1,6 @@
+<!-- LANG: **English** | [中文](README.zh.md) -->
+**English** | [中文版 →](README.zh.md)
+
 # Can a large AI model learn *without* backpropagation — and if it can't reason, is that the method or the design?
 
 *A controlled study of a 4-billion-parameter language model trained with no backpropagation, and what its failures actually tell us.*

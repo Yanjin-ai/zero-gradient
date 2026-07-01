@@ -1,3 +1,6 @@
+<!-- **English** | [中文](PAPER_workshop.zh.md) -->
+**English** | [中文 →](PAPER_workshop.zh.md)
+
 # Is It the Algorithm or the Architecture? A Boundary Study of a Backprop-Free 4B LM with a Trainable-Attention Control
 
 **Workshop cut (~8 pp).** Condensed from the full technical report (`PAPER_DRAFT.md`); all numbers trace to `EXPERIMENT_LEDGER.md`.
