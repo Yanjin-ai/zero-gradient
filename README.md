@@ -13,6 +13,8 @@
 ---
 
 > **文档地图**：锁定结论索引 [MASTER_ARCHIVE.md](MASTER_ARCHIVE.md)｜中文深度总档 [项目总档案.md](项目总档案.md)｜架构 v1.0/v2.0 边界 [ARCHITECTURE.md](ARCHITECTURE.md)｜提交完整性 [SUBMISSION.md](SUBMISSION.md)｜实验台账 [EXPERIMENT_LEDGER.md](EXPERIMENT_LEDGER.md)｜决策记录 [docs/adr/](docs/adr/)｜工程规范 [ENGINEERING.md](ENGINEERING.md)。
+>
+> **对外成果**：完整技术稿 [PAPER_DRAFT.md](PAPER_DRAFT.md)（~9-11pp）｜8 页精简 [PAPER_workshop.md](PAPER_workshop.md)｜幻灯提纲 [slides_outline.md](slides_outline.md)｜Kaggle 提交说明 [KAGGLE_README.md](KAGGLE_README.md)｜真实实验数据 [results/](results/)｜能力雷达 [runs/track1_radar.png](runs/track1_radar.png)。
 
 ## 0.5 当前阶段技术总结（Phase D–F + 架构发现，2026-06）
 
@@ -33,6 +35,24 @@
 **④ 下一阶段（Phase G 方向）需要动结构归纳偏置。** 要靠拢现代 LLM 的关系/多步能力，"ZeroBP backbone + 少量顶层 BP"不够，需要更强的结构归纳偏置：**不塌缩的序列读出（pooling/多位置）/ 真正可训练的 attention / 更深 BP**——这超出当前 Hybrid 边界，留作 Phase G。
 
 **提交版隔离（红线）**：官方 Kaggle 提交 = 纯 ZeroBP 4B（`kaggle_run`，见 [SUBMISSION.md](SUBMISSION.md)），全程零 autograd；所有 Phase E/F 的少量 BP 都在**独立研究脚本 + 默认 off**，不进提交。
+
+## 0.6 Phase G/H 定论（结构探索收口 + 新骨架验证，2026-07）
+
+§0.5④ 提出的 Phase G 方向已**全部测完并收口**，并进一步开了一条 **Phase H 新骨架验证线**（完整叙事见 [PAPER_DRAFT.md](PAPER_DRAFT.md)）：
+
+**⑤ Phase G（v2.0 结构杠杆，在当前骨架上）——三条全部证伪。** ① 不塌缩读出：冻结表示上换 mean-pool/all-positions **不升反降至 chance** → 关系结构**不在表示任何位置**；② 可训练 attention 隔离：冻 embedding 只训 Wq/Wk，NLI **+0.0pp**（权重确有更新）→ attention 单独不是杠杆；③ 更深 BP：小配置 NLI 抬到 65.7% 但**不转移 4B**，多步任何深度仍 chance。→ **在当前 ZeroBP 骨架上加结构/BP 无突破 4B 的路径**（ADR-004 CLOSED）。
+
+**⑥ Phase H（新骨架控制实验）——边界是架构性的。** 用一个**标准多层可训练 attention Transformer + 全 BP**（严格隔离在 `phase_h/`，不碰提交线）复测同样的任务：同分布合成 NLI/算术从 ZeroBP 的 65.7%/chance **→ 100%**；真实 **SNLI 69.97%**（ZeroBP-4B = chance 33.4%）。→ **ZeroBP 的关系/多步失败是架构导致，不是任务不可学。** 但新骨架也有**诚实上限**：多步 **k≤3=100% 但 k≥4 是抗规模的墙**（5× 参数 + 2.5× 步数不动），真实 GSM8K exact-match **2%**，真实 SST-2 两栈都 ≈chance。
+
+**最终 scorecard**（详见 [results/](results/) + [EXPERIMENT_LEDGER.md](EXPERIMENT_LEDGER.md)）：
+
+| 维度 | Phase H（新骨架） | ZeroBP-4B（锁定） | 结论 |
+|---|---|---|---|
+| 合成 NLI + 算术 | 100% / 100% | 65.7%(小) / chance | 骨架是根本限制 |
+| 真实 SNLI | **69.97%** | 33.4%(chance) | 关系结构可安装 |
+| 多步深度 | k≤3=100%, k≥4 抗规模墙 | 任何深度 chance | 新栈有自身天花板 |
+| 生成式 GSM8K | EM ~2% | — | 小模型 stretch 失败 |
+| 真实 SST-2 | ≈chance（探针 53%） | ≈chance | 真实情感 ≫ 合成 bag |
 
 ---
 
@@ -166,6 +186,6 @@ python kaggle_zerograd_moe.py
 
 ## 8. 当前状态与下一步
 
-- ✅ Phase A（机制）、诚实定稿、Phase B（真实 T4 ≥4B 跑通、击败 BP 显存）、**Phase C（schedule 稳定化：漂移消除、test ppl 1360、7/7 门）**。
-- 原设定（32k word-level 词表）已干净收口：**稳定、单调、test ppl ~1360**。
-- **下一步（路线图）**：Phase D（BPE/更小词表 + 更强读出头 + 局部损失增强 → 更低/更可读 ppl）；Phase C.1（从稳定 best checkpoint 做后训练试点）；Phase E（混合 BP，长期研究）。
+- ✅ **Phase A–C**（机制 → 真实 T4 ≥4B → schedule 稳定化）；**Phase D**（BPE+MLP 头，test ppl 1391/1355）；**Phase E/F**（能力矩阵 + 少量 BP 边界，情感 79% / NLI·多步硬限）；**Phase G**（v2.0 三杠杆全证伪，收口）；**Phase H**（新骨架控制实验：真实 SNLI 69.97%、多步 k≤3 装进、k≥4 抗规模墙、GSM8K 2%、SST-2 ≈chance）。
+- ✅ **对外成果就绪**：完整技术稿 + 8 页精简 + 幻灯提纲 + Kaggle 提交说明 + `results/` 真实数据 + 能力雷达（见文档地图）。
+- **可选下一步**：(a) 提交/更新 Kaggle 纯 ZeroBP baseline；(b) 打破 k≥4 多步墙（curriculum / chain-of-thought，而非纯扩规模）；(c) 把 SNLI 扩到 MNLI、Phase H 上规模；(d) 在可训练 attention 底座上验证更强 ZeroBP 局部规则（两条线合流）。
