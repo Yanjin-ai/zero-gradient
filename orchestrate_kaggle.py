@@ -20,6 +20,7 @@ ROOT = Path(__file__).parent
 LEDGER = ROOT/"runs"/"experiments.jsonl"; LOG = ROOT/"runs"/"orchestrator.log"
 CKPT_DIR, C1_DIR, ADAPT_DIR = ROOT/"kaggle_ckpt", ROOT/"kaggle_c1", ROOT/"kaggle_adapt"
 PE_DIR = ROOT/"kaggle_phase_e"; PN_DIR = ROOT/"kaggle_phasee_nli"
+SST2_DIR = ROOT/"kaggle_track1_sst2"; SST2_REF = "yanjinli2001/post-backprop-track1-sst2"
 CKPT_REF = "yanjinli2001/post-backprop-zerograd-4b-checkpoint"
 C1_REF = "yanjinli2001/post-backprop-zerograd-c1"
 ADAPT_REF = "yanjinli2001/post-backprop-zerograd-adapt"
@@ -129,4 +130,6 @@ if __name__ == "__main__":
         log("phasee stage did not complete"); sys.exit(1)
     if "phasenli" in stages and not stage_generic(PN_REF, PN_DIR, "phasenli", "phasee_nli_run_summary.json"):
         log("phasenli stage did not complete"); sys.exit(1)
+    if "sst2" in stages and not stage_generic(SST2_REF, SST2_DIR, "sst2", "track1_sst2_run_summary.json"):
+        log("sst2 stage did not complete"); sys.exit(1)
     log("orchestrator done")

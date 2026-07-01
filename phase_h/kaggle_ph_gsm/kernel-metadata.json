@@ -1,5 +1,5 @@
 {
-  "id": "yanjinli2001/post-backprop-phaseh-gsm",
+  "id": "yanjinli2001/post-backprop-phase-h-multi-step",
   "title": "Post Backprop Phase H Multi-step",
   "code_file": "ph_gsm_kernel.ipynb",
   "language": "python",

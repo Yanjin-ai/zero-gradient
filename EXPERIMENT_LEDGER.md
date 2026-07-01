@@ -66,7 +66,10 @@
 | 🔒 G0 子结论 [INTERP] | 同一标准 trainable-attn base + 全 BP **同时攻克**关系（NLI）与多步（算术）两个 ZeroBP 骨架装不进的维度 → **瓶颈是骨架（冻结 reservoir attention + 末位塌缩），非任务/非 BP 预算**。**作用域**：合成、小模型、完全可学；**未**触及真实 SNLI/MNLI/GSM8K（G1/G2 需 GPU）。G0 过 → Phase H 有腿，值得上 GPU | — |
 | **G1 脚手架就绪（pending GPU）** | 真实 SNLI/MNLI 训练脚本（word 级 tokenizer + 6L×8H d256，全 BP）+ Kaggle kernel（T4/internet）+ 自包含 orchestrator（push→poll→pull→`runs/ph_nli_run_summary.json`）。**本地合成 smoke 通过**（loop/metrics/summary 正确，synthetic 100%）；真实 NLI 待上 GPU | `phase_h/ph_nli_gpu.py` · `build_ph_kernels.py` · `orchestrate_ph.py` |
 | **G2 脚手架就绪（pending GPU）** | 多步算术**深度扫描**（n_steps 递增，classification，reuse PhTransformer）+ kernel + orchestrator（`phgsm` stage）。本地 smoke：0.80M/4L/1500 步 → k=2 **100%**、k=3 25%、k=4 19%；**加大验证**（k=3, 2.67M/6L/6000 步）→ **100%** ⇒ **k≥3 是欠训/欠容量、非墙**——Phase H **确实随算力装深多步**（ZeroBP 连 k=2 任何预算都 chance）。GPU 扫描映射真实上限。真实 NL GSM8K = **G2b stretch**（生成式，需 causal-LM + 规模），诚实标注不伪装 | `phase_h/ph_gsm_gpu.py` |
+| **G2b 生成式脚手架（pending GPU）** | 生成式多步（causal LM `PhCausalLM`，逐 token 生成 + exact-match）+ kernel + orchestrator（`phgsmgen`）。本地 smoke（synth 2 步，0.80M）：EM 0→**66.6%**@2000 步（仍升）。真实 GSM8K = 诚实 stretch（小 char LM 弱配，标注不伪装） | `phase_h/ph_gsm_gen.py` |
+| **Track 1 SST-2（ZeroBP 4B，pending GPU）** | 复用 `phasee_nli_4b` helpers，在 4B checkpoint 上真实 GLUE/SST-2：zero-shot / Mixed-BP(emb) / (emb+attn)，公平闭式头 + WikiText ppl 漂移。import/cross-ref 校验通过；kernel（挂 wikitext + 4B ckpt + internet）就绪 | `track1_sst2_4b.py` |
 | **Track 1 能力雷达脚手架** | 数据驱动雷达（`runs/track1_metrics.json`→`runs/track1_radar.png`）：ZeroBP-4B（锁定真值 LM~.51/情感.79/NLI.334/算术.20）vs Phase H（G0 合成 关系/多步=1.0，LM/情感 pending）。已本地渲染验证 | `track1_radar.py` |
+| **Kaggle 自动跑（live）** | 4 kernel 已连 API：G1(SNLI) + G2(深度扫描) **RUNNING**；G2b(GSM8K) + SST-2 待 slot（Kaggle **限 2 并发 GPU**）自动补push。orchestrator 后台 poll→pull→`runs/experiments.jsonl`+`runs/ph_orchestrator.log` | `orchestrate_ph.py` · `orchestrate_kaggle.py sst2` |
 
 ## 勘误（Erratum）— 必须知道
 `load_state_dict` 在 CPU 上 `.to(cpu)` 不复制 → reset 后 base.E 别名 golden checkpoint，随后原地 `index_add_` 污染 golden，使**多 reset 小配置实验**串味。**已修**（commit `66d5cc4`，clone）。

@@ -63,6 +63,9 @@
 - **G0（本地 CPU）**：`python3 phase_h/ph_nli.py` · `python3 phase_h/ph_arith.py`（合成，已 100%）。
 - **G1 本地 smoke**：`python3 phase_h/ph_nli_gpu.py --source synthetic --steps 800`（验证 loop/summary）。
 - **G2 本地 smoke**：`python3 phase_h/ph_gsm_gpu.py --steps_list 2,3,4 --train_steps 1500`（深度扫描；k=2=100%，k≥3 需更大/更长）。
-- **G1+G2 上 GPU**：`python3 phase_h/build_ph_kernels.py`（生成两个 kernel：`kaggle_ph_nli` 真实 SNLI / `kaggle_ph_gsm` 多步深度扫描）→ `python3 phase_h/orchestrate_ph.py`（默认跑 `phnli phgsm`；push→poll→pull，需 Kaggle creds；结果入 `runs/experiments.jsonl` + `runs/ph_{nli,gsm}_run_summary.json`）。改脚本后必重跑 build。
+- **G2b 生成式本地 smoke**：`python3 phase_h/ph_gsm_gen.py --source synth --n_steps 2`（causal LM 逐 token 生成 + EM）。
+- **Track 1 SST-2（本地不可跑，需 4B ckpt+GPU）**：`python3 build_track1_kernels.py` → `python3 orchestrate_kaggle.py sst2`。
+- **G1+G2+G2b 上 GPU**：`python3 phase_h/build_ph_kernels.py`（生成 3 个 kernel：`kaggle_ph_nli` SNLI / `kaggle_ph_gsm` 深度扫描 / `kaggle_ph_gsm_gen` 生成式 GSM8K）→ `python3 phase_h/orchestrate_ph.py`（默认 `phnli phgsm phgsmgen`）。改脚本后必重跑 build。
+- **⚠ Kaggle 限 2 并发 GPU session**：一次只跑 2 个；orchestrator 顺序 push→wait，天然遵守此限（先 G1+G2 并行，完成后再 G2b、再 SST-2）。kernel 实际 slug 由**标题**派生（如 `post-backprop-phase-h-nli`），metadata id 已对齐。
 - **Track 1 雷达**：`python3 track1_radar.py` → `runs/track1_radar.png`（读 `runs/track1_metrics.json`；真实 Kaggle 数到手后改 JSON 再跑）。
 - **监控**：`runs/ph_orchestrator.log`（人读）+ `runs/experiments.jsonl`（机器台账，含 push/finished/metrics 事件）。

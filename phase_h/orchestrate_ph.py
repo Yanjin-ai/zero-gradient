@@ -14,8 +14,9 @@ from datetime import datetime, timezone
 HERE = Path(__file__).parent; ROOT = HERE.parent
 (ROOT/"runs").mkdir(exist_ok=True)
 LEDGER = ROOT/"runs"/"experiments.jsonl"; LOG = ROOT/"runs"/"ph_orchestrator.log"
-PHNLI_DIR = HERE/"kaggle_ph_nli"; PHNLI_REF = "yanjinli2001/post-backprop-phaseh-nli"
-PHGSM_DIR = HERE/"kaggle_ph_gsm"; PHGSM_REF = "yanjinli2001/post-backprop-phaseh-gsm"
+PHNLI_DIR = HERE/"kaggle_ph_nli"; PHNLI_REF = "yanjinli2001/post-backprop-phase-h-nli"
+PHGSM_DIR = HERE/"kaggle_ph_gsm"; PHGSM_REF = "yanjinli2001/post-backprop-phase-h-multi-step"
+PHGEN_DIR = HERE/"kaggle_ph_gsm_gen"; PHGEN_REF = "yanjinli2001/post-backprop-phase-h-gsm-gen"
 DONE = ("complete", "error", "cancelacknowledged", "cancelrequested"); ACTIVE = ("running", "queued")
 FORCE = False
 
@@ -62,11 +63,12 @@ def stage(name, ref, d, summ, label, timeout_s=13000):
 STAGES = {
     "phnli": lambda: stage("phnli", PHNLI_REF, PHNLI_DIR, "ph_nli_run_summary.json", "PHASE H G1 RESULT"),
     "phgsm": lambda: stage("phgsm", PHGSM_REF, PHGSM_DIR, "ph_gsm_run_summary.json", "PHASE H G2 RESULT"),
+    "phgsmgen": lambda: stage("phgsmgen", PHGEN_REF, PHGEN_DIR, "ph_gsmgen_run_summary.json", "PHASE H G2b RESULT"),
 }
 
 if __name__ == "__main__":
     args = sys.argv[1:]; FORCE = "force" in args
-    stages = [s for s in args if s != "force"] or ["phnli", "phgsm"]
+    stages = [s for s in args if s != "force"] or ["phnli", "phgsm", "phgsmgen"]
     log(f"ph orchestrator start: stages={stages} force={FORCE}")
     if not check_creds(): log("NO KAGGLE CREDENTIALS — ~/.kaggle/kaggle.json or KAGGLE_USERNAME/KAGGLE_KEY"); sys.exit(2)
     for s in stages:
