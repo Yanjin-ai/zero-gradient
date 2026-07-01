@@ -28,8 +28,8 @@ kdir = root/"kaggle_track1_sst2"; kdir.mkdir(exist_ok=True)
 nbf.write(nb, str(kdir/"track1_sst2_kernel.ipynb"))
 (kdir/"kernel-metadata.json").write_text(
     '{\n'
-    '  "id": "yanjinli2001/post-backprop-track1-sst2",\n'
-    '  "title": "Post Backprop Track1 SST2",\n'
+    '  "id": "yanjinli2001/post-backprop-track1-sst2-v2",\n'
+    '  "title": "Post Backprop Track1 SST2 V2",\n'
     '  "code_file": "track1_sst2_kernel.ipynb",\n'
     '  "language": "python",\n'
     '  "kernel_type": "notebook",\n'

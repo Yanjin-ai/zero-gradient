@@ -1,6 +1,6 @@
 {
-  "id": "yanjinli2001/post-backprop-phase-h-gsm-gen",
-  "title": "Post Backprop Phase H GSM Gen",
+  "id": "yanjinli2001/post-backprop-phaseh-gsmgen-v2",
+  "title": "Post Backprop PhaseH GsmGen V2",
   "code_file": "ph_gsmgen_kernel.ipynb",
   "language": "python",
   "kernel_type": "notebook",

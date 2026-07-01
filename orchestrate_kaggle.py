@@ -20,7 +20,7 @@ ROOT = Path(__file__).parent
 LEDGER = ROOT/"runs"/"experiments.jsonl"; LOG = ROOT/"runs"/"orchestrator.log"
 CKPT_DIR, C1_DIR, ADAPT_DIR = ROOT/"kaggle_ckpt", ROOT/"kaggle_c1", ROOT/"kaggle_adapt"
 PE_DIR = ROOT/"kaggle_phase_e"; PN_DIR = ROOT/"kaggle_phasee_nli"
-SST2_DIR = ROOT/"kaggle_track1_sst2"; SST2_REF = "yanjinli2001/post-backprop-track1-sst2"
+SST2_DIR = ROOT/"kaggle_track1_sst2"; SST2_REF = "yanjinli2001/post-backprop-track1-sst2-v2"
 CKPT_REF = "yanjinli2001/post-backprop-zerograd-4b-checkpoint"
 C1_REF = "yanjinli2001/post-backprop-zerograd-c1"
 ADAPT_REF = "yanjinli2001/post-backprop-zerograd-adapt"

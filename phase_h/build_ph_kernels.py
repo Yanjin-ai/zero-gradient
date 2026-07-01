@@ -58,7 +58,7 @@ build("post-backprop-phase-h-multi-step", "Post Backprop Phase H Multi-step", "p
        '--layers', '6', '--heads', '8', '--out', '/kaggle/working/ph_gsm_run_summary.json'])
 
 # ---- G2b: GENERATIVE multi-step (causal LM) — synthetic + real GSM8K (honest stretch) ----
-build("post-backprop-phase-h-gsm-gen", "Post Backprop Phase H GSM Gen", "ph_gsmgen_kernel.ipynb", "kaggle_ph_gsm_gen",
+build("post-backprop-phaseh-gsmgen-v2", "Post Backprop PhaseH GsmGen V2", "ph_gsmgen_kernel.ipynb", "kaggle_ph_gsm_gen",
       "# Phase H / v3.0 — G2b: GENERATIVE multi-step reasoning (causal LM, exact-match)\n"
       "RESEARCH-ONLY, isolated. Generates the answer token-by-token (real GSM8K shape). Runs synthetic "
       "generative arithmetic AND real GSM8K (HF datasets, internet ON). HONEST: a small char LM is a weak "

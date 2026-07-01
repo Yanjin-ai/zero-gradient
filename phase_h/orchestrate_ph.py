@@ -16,7 +16,7 @@ HERE = Path(__file__).parent; ROOT = HERE.parent
 LEDGER = ROOT/"runs"/"experiments.jsonl"; LOG = ROOT/"runs"/"ph_orchestrator.log"
 PHNLI_DIR = HERE/"kaggle_ph_nli"; PHNLI_REF = "yanjinli2001/post-backprop-phase-h-nli"
 PHGSM_DIR = HERE/"kaggle_ph_gsm"; PHGSM_REF = "yanjinli2001/post-backprop-phase-h-multi-step"
-PHGEN_DIR = HERE/"kaggle_ph_gsm_gen"; PHGEN_REF = "yanjinli2001/post-backprop-phase-h-gsm-gen"
+PHGEN_DIR = HERE/"kaggle_ph_gsm_gen"; PHGEN_REF = "yanjinli2001/post-backprop-phaseh-gsmgen-v2"
 DONE = ("complete", "error", "cancelacknowledged", "cancelrequested"); ACTIVE = ("running", "queued")
 FORCE = False
 
