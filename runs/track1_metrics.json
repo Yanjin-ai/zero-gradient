@@ -1,0 +1,41 @@
+{
+  "axes": [
+    "Language\nModeling",
+    "Sentiment /\nClassification",
+    "Relational\n(NLI)",
+    "Multi-step\n(Arithmetic)"
+  ],
+  "series": [
+    {
+      "name": "ZeroBP 4B (locked, real)",
+      "values": [
+        0.51,
+        0.79,
+        0.334,
+        0.2
+      ],
+      "provenance": [
+        "WikiText-103 4B, ~unigram+51%",
+        "4B Mixed-BP embedding 79%",
+        "4B zero-shot = chance 33.4%",
+        "any BP depth = chance 20%"
+      ]
+    },
+    {
+      "name": "Phase H (G0, synthetic*)",
+      "values": [
+        null,
+        null,
+        1.0,
+        1.0
+      ],
+      "provenance": [
+        "G1 pending (GPU/SNLI)",
+        "Track1 pending",
+        "synthetic NLI 100%",
+        "synthetic 2-step 100%"
+      ]
+    }
+  ],
+  "note": "Phase H* = small-config synthetic G0 (proof the backbone was the limit); real SNLI/GSM8K (G1/G2) pending on GPU."
+}

@@ -64,6 +64,9 @@
 | **G0-NLI**（4L×4H d128, 0.80M, 全 BP） | 合成 NLI（同 task_nli 分布）val **100.0%**@step500 → 收敛 100%。**vs ZeroBP 锁定：深 BP 65.7%（小）/ 4B chance** | `phase_h/ph_nli.py` |
 | **G0-arith**（同 base） | 2 步算术（同 task_arith 分布）val **100.0%**@step1000。**vs ZeroBP 锁定：任何 BP 深度 19–21% chance＝不可安装** | `phase_h/ph_arith.py` |
 | 🔒 G0 子结论 [INTERP] | 同一标准 trainable-attn base + 全 BP **同时攻克**关系（NLI）与多步（算术）两个 ZeroBP 骨架装不进的维度 → **瓶颈是骨架（冻结 reservoir attention + 末位塌缩），非任务/非 BP 预算**。**作用域**：合成、小模型、完全可学；**未**触及真实 SNLI/MNLI/GSM8K（G1/G2 需 GPU）。G0 过 → Phase H 有腿，值得上 GPU | — |
+| **G1 脚手架就绪（pending GPU）** | 真实 SNLI/MNLI 训练脚本（word 级 tokenizer + 6L×8H d256，全 BP）+ Kaggle kernel（T4/internet）+ 自包含 orchestrator（push→poll→pull→`runs/ph_nli_run_summary.json`）。**本地合成 smoke 通过**（loop/metrics/summary 正确，synthetic 100%）；真实 NLI 待上 GPU | `phase_h/ph_nli_gpu.py` · `build_ph_kernels.py` · `orchestrate_ph.py` |
+| **G2 脚手架就绪（pending GPU）** | 多步算术**深度扫描**（n_steps 递增，classification，reuse PhTransformer）+ kernel + orchestrator（`phgsm` stage）。本地 smoke：0.80M/4L/1500 步 → k=2 **100%**、k=3 25%、k=4 19%；**加大验证**（k=3, 2.67M/6L/6000 步）→ **100%** ⇒ **k≥3 是欠训/欠容量、非墙**——Phase H **确实随算力装深多步**（ZeroBP 连 k=2 任何预算都 chance）。GPU 扫描映射真实上限。真实 NL GSM8K = **G2b stretch**（生成式，需 causal-LM + 规模），诚实标注不伪装 | `phase_h/ph_gsm_gpu.py` |
+| **Track 1 能力雷达脚手架** | 数据驱动雷达（`runs/track1_metrics.json`→`runs/track1_radar.png`）：ZeroBP-4B（锁定真值 LM~.51/情感.79/NLI.334/算术.20）vs Phase H（G0 合成 关系/多步=1.0，LM/情感 pending）。已本地渲染验证 | `track1_radar.py` |
 
 ## 勘误（Erratum）— 必须知道
 `load_state_dict` 在 CPU 上 `.to(cpu)` 不复制 → reset 后 base.E 别名 golden checkpoint，随后原地 `index_add_` 污染 golden，使**多 reset 小配置实验**串味。**已修**（commit `66d5cc4`，clone）。

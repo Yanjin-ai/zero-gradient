@@ -1,0 +1,14 @@
+{
+  "id": "yanjinli2001/post-backprop-phaseh-nli",
+  "title": "Post Backprop Phase H NLI",
+  "code_file": "ph_nli_kernel.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "machine_shape": "NvidiaTeslaT4",
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": []
+}

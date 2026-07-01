@@ -38,7 +38,8 @@
 
 ### 2.3 数据层 — 更丰富预训练 + 面向下游结构
 - 预训练：文档级文本 + 对话/QA + 部分 GSM8K 风格算术解释文本。
-- 下游：NLI（SNLI/MNLI 或轻量版）、GSM8K（部分题）微调/评测。
+- 下游：NLI（SNLI/MNLI 或轻量版）；多步 = **G2 核心 = 可扩展多步算术深度扫描**（classification，与 ZeroBP 矩阵同分布的直接延伸）。
+- **【诚实边界】G2 vs G2b**：**G2（本 scaffold）** = 控制的多步算术，n_steps 递增——ZeroBP k=2 就 chance，看 Phase H 能装到多深，**可学、可对照**。**G2b（stretch，未做）** = 真实自然语言 **GSM8K**：生成式 + 需 causal-LM 变体 + 预训练/规模；一个从零小模型 **不会**直接刷出好成绩——**不伪装成小模型的胜利**，留作独立生成式栈。
 - 合成对照：先用**与 ZeroBP 矩阵完全同分布**的合成 NLI/算术，确保跨栈 apples-to-apples。
 
 ### 2.4 门槛 / Gates
@@ -57,3 +58,11 @@
 - `phase_h/` 不 import `kaggle_zerograd_moe`；提交线不 import `phase_h/`。
 - `python3 kaggle_zerograd_moe.py` 默认仍 `6.251` / 零 autograd；`selfcheck.py` 过。
 - Phase H 产物 `ph_*` 前缀，不覆盖提交 checkpoint。
+
+## 五、运行手册（脚手架已就绪）
+- **G0（本地 CPU）**：`python3 phase_h/ph_nli.py` · `python3 phase_h/ph_arith.py`（合成，已 100%）。
+- **G1 本地 smoke**：`python3 phase_h/ph_nli_gpu.py --source synthetic --steps 800`（验证 loop/summary）。
+- **G2 本地 smoke**：`python3 phase_h/ph_gsm_gpu.py --steps_list 2,3,4 --train_steps 1500`（深度扫描；k=2=100%，k≥3 需更大/更长）。
+- **G1+G2 上 GPU**：`python3 phase_h/build_ph_kernels.py`（生成两个 kernel：`kaggle_ph_nli` 真实 SNLI / `kaggle_ph_gsm` 多步深度扫描）→ `python3 phase_h/orchestrate_ph.py`（默认跑 `phnli phgsm`；push→poll→pull，需 Kaggle creds；结果入 `runs/experiments.jsonl` + `runs/ph_{nli,gsm}_run_summary.json`）。改脚本后必重跑 build。
+- **Track 1 雷达**：`python3 track1_radar.py` → `runs/track1_radar.png`（读 `runs/track1_metrics.json`；真实 Kaggle 数到手后改 JSON 再跑）。
+- **监控**：`runs/ph_orchestrator.log`（人读）+ `runs/experiments.jsonl`（机器台账，含 push/finished/metrics 事件）。
