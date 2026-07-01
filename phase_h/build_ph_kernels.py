@@ -48,14 +48,16 @@ build("post-backprop-phase-h-nli", "Post Backprop Phase H NLI", "ph_nli_kernel.i
        '--d_model', '256', '--max_len', '64', '--epochs', '3', '--out', '/kaggle/working/ph_nli_run_summary.json'])
 
 # ---- G2: multi-step arithmetic depth sweep (GSM proxy; real GSM8K = G2b stretch) ----
+# DEEP run: bigger model (12L d384) + more steps/data per depth, to resolve whether k>=4 is reachable or a
+# real ceiling. (G2 v1 = 6L d256 6k steps: k2 100% / k4-8 chance -- recorded in ledger/MASTER_ARCHIVE.)
 build("post-backprop-phase-h-multi-step", "Post Backprop Phase H Multi-step", "ph_gsm_kernel.ipynb", "kaggle_ph_gsm",
-      "# Phase H / v3.0 — G2: multi-step arithmetic depth sweep (standard trainable-attn base + full BP)\n"
-      "RESEARCH-ONLY, isolated. Sweeps n_steps to map how deep multi-step reasoning installs. Contrast: "
-      "ZeroBP is chance at k=2 already (uninstallable at any BP depth). Real NL GSM8K = G2b stretch "
-      "(generative; needs a causal-LM variant + scale) — not this kernel.",
+      "# Phase H / v3.0 — G2 (DEEP): multi-step arithmetic depth sweep, 12L x 8H d=384, per-depth full BP\n"
+      "RESEARCH-ONLY, isolated. Bigger model + more steps/data to map how deep multi-step reasoning installs "
+      "(k=2/4/6/8). Contrast: ZeroBP is chance at k=2 already (uninstallable at any BP depth).",
       "ph_gsm_gpu.py",
-      ['ph_gsm_gpu.py', '--steps_list', '2,4,6,8', '--train_steps', '6000', '--d_model', '256',
-       '--layers', '6', '--heads', '8', '--out', '/kaggle/working/ph_gsm_run_summary.json'])
+      ['ph_gsm_gpu.py', '--steps_list', '2,4,6,8', '--train_steps', '15000', '--d_model', '384',
+       '--layers', '12', '--heads', '8', '--n_train', '16000', '--batch', '128',
+       '--out', '/kaggle/working/ph_gsm_run_summary.json'])
 
 # ---- G2b: GENERATIVE multi-step (causal LM) — synthetic + real GSM8K (honest stretch) ----
 build("post-backprop-phaseh-gsmgen-v2", "Post Backprop PhaseH GsmGen V2", "ph_gsmgen_kernel.ipynb", "kaggle_ph_gsm_gen",
