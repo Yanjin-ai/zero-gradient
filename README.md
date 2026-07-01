@@ -1,191 +1,147 @@
-# Zero-Gradient Sparse-Learning MoE — 项目全记录
+# 无反向传播的大模型学习，与"能力的架构性边界"
 
-> Kaggle [The Post-Backprop Challenge: Zero-Gradient Learning for Efficiency](https://www.kaggle.com/competitions/the-post-backprop-challenge-zero-gradient-learning-for-efficiency)
-> 从 0 到可提交：竞赛侦察 → nano 机制验证（A）→ 循序渐进 scale → 诚实定稿 → 真实 T4 上跑 ≥4B（B）→ schedule 稳定化（C）。
-> 全程**零反向传播**（无 `torch.autograd`/`.backward()`/optimizer），手写局部规则。
+*Zero-Backprop Learning at Scale, and the Architecture of Capability — a controlled boundary study.*
 
----
+> 一句话：在**单块 T4 GPU / 无全局反向传播**的约束下，我们训练了一个 **4.16B 参数**的语言模型（全程零 `autograd`，每步只用手写局部规则更新 0.42% 的专家），然后系统地测量它在关系推理、多步计算等现代 LLM 核心维度上的**能力边界**；再用一个**标准可训练注意力骨架 + 全反向传播**作为对照实验，证明这些边界**是架构导致的、不是任务不可学**——新骨架在真实 SNLI 上达到 **69.97%**（旧骨架为随机水平 33.4%），同时也暴露出它自己诚实的上限。
 
-## 0. 一句话
-
-在**单 T4 / 3h / 无全局梯度**约束下，自研一个**内容路由的 MoE**，用**逐专家局部规则**训练 **4.156B 常驻参数**模型：每步只更新 **0.42% 的专家**（sparse *learning*，非仅 sparse forward），峰值显存 **8.3GB**（BP 训 4B 需 ~31GB → T4 直接 OOM）。在 WikiText-103 上 test perplexity ≈ **1391**（BPE subword，早停）/ **1355**（跑满预算）、7/7 合规门全过、确定性可复现。**核心价值是"4B 可训练的可行性 + 系统效率"，不是"调度更聪明降 PPL"——后者经诚实实验被否。** 后续 Phase D–F 的能力边界与少量 BP 研究见 §0.5。
+> 完整技术稿（英文）：[PAPER_DRAFT.md](PAPER_DRAFT.md)（~9–11pp）· 8 页精简 [PAPER_workshop.md](PAPER_workshop.md) · 幻灯 [slides_outline.md](slides_outline.md)｜真实实验数据 [results/](results/)｜锁定结论索引 [MASTER_ARCHIVE.md](MASTER_ARCHIVE.md)｜实验台账 [EXPERIMENT_LEDGER.md](EXPERIMENT_LEDGER.md)｜决策记录 [docs/adr/](docs/adr/)。
 
 ---
 
-> **文档地图**：锁定结论索引 [MASTER_ARCHIVE.md](MASTER_ARCHIVE.md)｜中文深度总档 [项目总档案.md](项目总档案.md)｜架构 v1.0/v2.0 边界 [ARCHITECTURE.md](ARCHITECTURE.md)｜提交完整性 [SUBMISSION.md](SUBMISSION.md)｜实验台账 [EXPERIMENT_LEDGER.md](EXPERIMENT_LEDGER.md)｜决策记录 [docs/adr/](docs/adr/)｜工程规范 [ENGINEERING.md](ENGINEERING.md)。
->
-> **对外成果**：完整技术稿 [PAPER_DRAFT.md](PAPER_DRAFT.md)（~9-11pp）｜8 页精简 [PAPER_workshop.md](PAPER_workshop.md)｜幻灯提纲 [slides_outline.md](slides_outline.md)｜Kaggle 提交说明 [KAGGLE_README.md](KAGGLE_README.md)｜真实实验数据 [results/](results/)｜能力雷达 [runs/track1_radar.png](runs/track1_radar.png)。
+## 1. 研究问题
 
-## 0.5 当前阶段技术总结（Phase D–F + 架构发现，2026-06）
+两个正交的问题贯穿全程：
 
-> 项目已从"能否跑通"推进到"ZeroBP 的能力边界在哪、少量 BP 能补到哪、架构瓶颈是什么"。以下是当前定论（4B 真实 T4 + 小配置交叉验证；细节见 [项目总档案.md](项目总档案.md) §1.5🔒 与 [Phase-F charter.md](Phase-F%20charter.md) §10🔒）。
+1. **在严格的单 GPU 预算下，一个完全不使用全局反向传播（BP）的语言模型能有多少能力？** 局部学习 / 无 BP 方法在内存和硬件受限场景很有吸引力，但它们在大规模下的能力天花板一直缺乏刻画。
+2. **当这样的模型在某个任务上失败时，失败的根因是算法（梯度不够）、架构（骨架无法表示这种结构）、还是任务本身（不可学）？** 三者通常纠缠在一起、无法区分——这正是本项目要用受控实验拆开的。
 
-**① ZeroBP 预训练成立，但有清晰的能力边界。** 纯 ZeroBP 4.16B 在 WikiText-103 上可训得有用 LM（test ppl ≈**1391**（早停）/≈**1355**（跑满预算），BPE+MLP 头，零 autograd、7/7 门）。但在后训练上，**能力随任务结构复杂度递减**（任务-方法矩阵）：
+## 2. 方法论
 
-| 任务 | 结构 | 4B zero-shot | 4B 少量 BP（embedding） | 小配置最好 |
+整个研究被组织成**三条互相隔离的实验线**，配合三条贯穿始终的纪律：
+
+- **提交线** — 一个干净、确定性、纯 ZeroBP 的 4B 基线（§4），作为被研究的固定对象。
+- **边界线** — 把这个骨架冻结成研究对象，测量"任务 × 方法"能力矩阵，逐步注入少量到深度的 BP（§5–6）。
+- **控制线（Phase H）** — 一个严格隔离的**标准可训练注意力骨架 + 全 BP**，作为架构对照，回答边界线的失败到底是不是骨架造成的（§7）。
+
+三条纪律：**① 公平读出** —— 能力一律用一个全新的、与任务无关的读出头来测量（我们两次发现：不公平的读出会凭空制造或抹掉表面的能力）；**② 单杠杆** —— 每个实验只改动一个结构自由度；**③ 诚实纠错** —— 我们自己的两个工作假设被后续实验推翻，报告里保留纠正而非最初的猜测（§8）。
+
+## 3. 更早的机制研究：无 BP 训练为什么能成立（Phase A–C）
+
+在做大模型之前，我们先在 nano 规模上确认机制、排除架构混淆（"toy 验证机制 → 真实数据看哪些 survive"）。关键发现：
+
+- **内容路由 + 局部规则确实能产生专家特化。** EMA-prototype 最近邻路由 + 容量限制，使专家按内容分工（合成数据 purity 0.67 vs 随机 0.25；真实语料 coherence +0.40）。这是"能赢的一半"。
+- **真正的硬通货是"训练时的更新稀疏"，不是"聪明的调度器"。** 标准 MoE 是 sparse forward + dense backward；本工作是 sparse forward + **sparse learning**：每步只更新 k_update ≪ N 个专家而质量不掉（**k=1 的 ppl ≈ k=16**）。我们原本押注一个"重要性 controller"能降 ppl，但它在 ppl 和覆盖率两个指标上**都不胜随机**——根因是容量路由已经把负载均衡，随机选已近最优。该假设被否，controller 降级为一个**确定性预算调度器**（价值在可复现性与最坏 backlog 上界，而非性能）。
+- **训练稳定性有清晰规律。** lr 过高 → 震荡；无 lr 衰减 / 不冻结路由 → 后期漂移（类灾难性遗忘，"跑满 3h 反而更差"）；**余弦衰减 + 后期冻结路由 → 单调、无漂移、整个预算都有用**。
+
+## 4. 系统：ZeroBP-4B（无反向传播的 4B 基线）
+
+一个 decoder 式内容路由 MoE 语言模型。数据流（代码级事实）：
+
+```
+token x ─► E[x] + pos                                       (embedding；|V|=32000 BPE, d=1024)
+        ─► 冻结随机因果注意力 (Wq,Wk 不训练)                    (单层"reservoir"注意力)
+        ─► h = (emb + att·emb)[:, -1]     ← 末位塌缩：整条序列 → 一个 [B,d] 向量
+        ─► 4× 堆叠 MoE block：内容路由(EMA-prototype+capacity) → 950 专家取 top-2
+        ─► 每块深监督 2 层 MLP 读出头 + 确定性 round-robin 预算(每块每步更新 k_update 个专家)
+```
+
+`d=1024, |V|=32000, seq_len=64, 4 层, 950 专家/层, k_route=2, k_update=4` → **4.16B fp16 常驻参数**。三个性质贯穿后文：**(a) 无全局梯度** —— 全程 `set_grad_enabled(False)` 并断言，专家由局部规则更新；**(b) 确定性稀疏预算** —— 每步只更新 0.42% 的专家；**(c) 冻结注意力 reservoir + 末位塌缩** —— §5–6 指认的两个架构疑点。
+
+**基线结果**：BPE + 2 层 MLP 头 + 路由冻结的余弦 schedule，在 WikiText-103 上 test perplexity ≈ **1391**（早停 ~54min）/ ≈ **1355**（跑满 ~2.9h 预算），比 unigram 好约 51%；峰值显存 ~8.3GB（同规模 BP 训练需 ~31GB → T4 直接 OOM），~8546 tok/s，确定性可复现。**核心价值是"4B 无 BP 可训练的可行性 + 系统效率"，以及它作为能力边界研究的干净对象。**
+
+## 5. 结果一：ZeroBP 的能力边界（Phase E/F）
+
+冻结骨架、只向 embedding / attention / 任务头注入 BP（不动骨架），用公平读出测量三种任务结构：
+
+| 任务 | 结构 | 4B zero-shot | 4B 少量 BP | 小配置最好 |
 |---|---|---|---|---|
-| 情感 | bag 组合 | 60% | **79%** | 100% |
-| NLI | 关系对齐 | 33%(chance) | 33%(不转移) | 62% |
-| 2 步算术 | 多步计算 | — | gate 失败 | ~chance |
+| 情感 | bag 组合 | 60% | **79%**（embedding+头） | 100% |
+| NLI | 关系对齐 | 33.4%（chance） | 33.4%（不转移） | 62% → 65.7%（深 BP） |
+| 两步算术 | 多步计算 | 24.7% | ~19–21%（chance） | ~chance |
 
-**② 少量 BP 部分有效——但是 embedding 在扛，且有限。** 在情感（bag 组合）上，少量真实 BP（仅 embedding+头）把 4B 从 60%→**79%**、近零遗忘，而 6 种纯 ZeroBP 后训练全 plateau ~62%——**墙的本质是 BP vs ZeroBP**。但对关系对齐（NLI），三条 ZeroBP 路线（更丰富数据 +2pp / 结构辅助目标 +0.5pp / attention 局部规则失败）都装不进关系几何；少量 BP 在小配置能撬到 59%（**公平读出下是 embedding 扛，attention 只 +0.3pp**），但**不转移到 4B**（4B NLI 即便 3000 步 +高 attention lr 仍 chance）。
+- **情感突破。** head-only 后训到 59.9%、近零遗忘；一点 embedding BP → **79%**（+3.0 ppl），且消融证明**embedding 才是杠杆**。
+- **NLI 不转移。** 4B 上 zero-shot / emb-BP / emb+attn-BP **全是 chance**，即使 3000 步 + 高 attention lr 重试仍 chance。
+- **多步不可安装。** 任何 BP 组件下都是 chance。三条"ZeroBP 原生"结构路线对 NLI 几乎无效：更丰富数据 +2.1pp、结构辅助目标 +0.5pp、attention 局部规则 ≈0。
 
-**③ 架构瓶颈新线索：末位塌缩。** 模型在 `context()` 里把**整个序列塌缩成"最后一个位置"一个向量**，所有 block 都在这一个向量上算。对关系/对齐/多步任务，信息很可能在塌缩时丢失——这比"attention 弱"或"BP 不够"更根本，是关系任务难的疑似真因。
+## 6. 结果二：瓶颈在哪里？（Phase G，三个单杠杆探针）
 
-**④ 下一阶段（Phase G 方向）需要动结构归纳偏置。** 要靠拢现代 LLM 的关系/多步能力，"ZeroBP backbone + 少量顶层 BP"不够，需要更强的结构归纳偏置：**不塌缩的序列读出（pooling/多位置）/ 真正可训练的 attention / 更深 BP**——这超出当前 Hybrid 边界，留作 Phase G。
+- **不塌缩读出**：在同一冻结表示上换 mean-pool / all-positions，NLI **不升反降至 chance**（34.9% / 32.9%）→ **关系结构根本不在表示的任何位置**，换读出捞不出来。
+- **可训练 attention 隔离**：冻结 embedding、只训 Wq/Wk，NLI **+0.0pp**（51.3→51.3；已验证 ‖ΔWq‖≈0.08 权重确有更新、‖ΔE‖=0 embedding 确冻）→ emb+attn 的 59.1% **全部来自 embedding**，attention 单独不是杠杆。
+- **更深 BP**：让 MoE block 也参与 BP，小配置 NLI 抬到 65.7%，但**不转移到 4B**；多步算术在**任何深度**仍是 chance。
 
-**提交版隔离（红线）**：官方 Kaggle 提交 = 纯 ZeroBP 4B（`kaggle_run`，见 [SUBMISSION.md](SUBMISSION.md)），全程零 autograd；所有 Phase E/F 的少量 BP 都在**独立研究脚本 + 默认 off**，不进提交。
+**边界结论**：对 bag 任务，ZeroBP + 少量 embedding BP 有效（79%）；对**关系**与**多步**这两个现代 LLM 核心维度，当前 ZeroBP-4B 架构**装不进结构**——它不在表示里、可训练 attention 单独无用、多步在任何 BP 深度都死。决定因素是：任务有多少落在 embedding（BP 可装），有多少需要通过冻结 block 的顺序计算 / 跨句注意力对齐（少量甚至大量 BP 都装不进）。**那么这是算法、BP 预算、还是骨架的问题？—— 控制线来回答。**
 
-## 0.6 Phase G/H 定论（结构探索收口 + 新骨架验证，2026-07）
+## 7. 结果三：架构控制实验（Phase H）
 
-§0.5④ 提出的 Phase G 方向已**全部测完并收口**，并进一步开了一条 **Phase H 新骨架验证线**（完整叙事见 [PAPER_DRAFT.md](PAPER_DRAFT.md)）：
+**设计与隔离**：一个刻意"普通"的标准 pre-LN Transformer —— 多头**双向**自注意力、GELU-MLP、残差、**mean-pool 读出**、**全反向传播（AdamW）**。严格隔离在 `phase_h/`（纯 PyTorch、零依赖 ZeroBP 代码；提交线永不 import 它）。在**同分布**的合成任务 + 真实 SNLI/GSM8K/SST-2 上复测。
 
-**⑤ Phase G（v2.0 结构杠杆，在当前骨架上）——三条全部证伪。** ① 不塌缩读出：冻结表示上换 mean-pool/all-positions **不升反降至 chance** → 关系结构**不在表示任何位置**；② 可训练 attention 隔离：冻 embedding 只训 Wq/Wk，NLI **+0.0pp**（权重确有更新）→ attention 单独不是杠杆；③ 更深 BP：小配置 NLI 抬到 65.7% 但**不转移 4B**，多步任何深度仍 chance。→ **在当前 ZeroBP 骨架上加结构/BP 无突破 4B 的路径**（ADR-004 CLOSED）。
+- **G0（合成，回答"是不是骨架"）**：一个 **0.8M** 参数的 4 层模型，全 BP，把 ZeroBP 卡在 65.7%/chance 的同一合成 NLI 和两步算术都做到 **100%** → 边界是**架构性的，不是任务不可学**。
+- **G1（真实 SNLI）**：12.4M 模型在真实 SNLI 上 **val 69.97%**（majority 33.8%），而 ZeroBP-4B 是 chance（33.4%）→ 新骨架在真实关系 benchmark 上进入现代小模型合格区间。
+- **G2（多步深度）**：k=2 → **100%**，k=3 → 100%（本地 2.67M），但 **k≥4 是一堵抗规模的墙**：参数从 4.7M 扩到 **21.3M**、步数 6k→15k，k≥4 仍近 chance（21%）。
+- **G2b / SST-2（诚实上限）**：小 char-LM 生成式解真实 GSM8K exact-match 仅 **2%**（预告的 stretch）；真实 SST-2 上 ZeroBP-4B 经读出诊断后确认 ≈ **chance**（公平 BP 探针 51.5→53.3%，majority 50.9%）——真实词汇情感远难于合成 bag 任务。
 
-**⑥ Phase H（新骨架控制实验）——边界是架构性的。** 用一个**标准多层可训练 attention Transformer + 全 BP**（严格隔离在 `phase_h/`，不碰提交线）复测同样的任务：同分布合成 NLI/算术从 ZeroBP 的 65.7%/chance **→ 100%**；真实 **SNLI 69.97%**（ZeroBP-4B = chance 33.4%）。→ **ZeroBP 的关系/多步失败是架构导致，不是任务不可学。** 但新骨架也有**诚实上限**：多步 **k≤3=100% 但 k≥4 是抗规模的墙**（5× 参数 + 2.5× 步数不动），真实 GSM8K exact-match **2%**，真实 SST-2 两栈都 ≈chance。
-
-**最终 scorecard**（详见 [results/](results/) + [EXPERIMENT_LEDGER.md](EXPERIMENT_LEDGER.md)）：
+**最终 scorecard**：
 
 | 维度 | Phase H（新骨架） | ZeroBP-4B（锁定） | 结论 |
 |---|---|---|---|
 | 合成 NLI + 算术 | 100% / 100% | 65.7%(小) / chance | 骨架是根本限制 |
-| 真实 SNLI | **69.97%** | 33.4%(chance) | 关系结构可安装 |
+| 真实 SNLI | **69.97%** | 33.4%（chance） | 关系结构可安装 |
 | 多步深度 | k≤3=100%, k≥4 抗规模墙 | 任何深度 chance | 新栈有自身天花板 |
 | 生成式 GSM8K | EM ~2% | — | 小模型 stretch 失败 |
 | 真实 SST-2 | ≈chance（探针 53%） | ≈chance | 真实情感 ≫ 合成 bag |
 
----
+## 8. 中途的发现与被推翻的假设
 
-## 1. 竞赛与硬约束（已核实）
+这项研究的一个特点是**多个自己的假设被数据推翻**，我们保留了纠正过程（完整见 [PAPER_DRAFT.md](PAPER_DRAFT.md) 附录 B）：
 
-| 维度 | 要求 |
+| 最初的说法 | 纠正 |
 |---|---|
-| 参数门禁 | 训练前常驻 **≥4,000,000,000 fp16 参数** |
-| 零梯度 | 完全替换 BPTT + 所有 autograd/`.backward()`/optimizer，用手写局部规则 |
-| 硬件/时间 | 单 Tesla T4 16GB 或 4 核 CPU，**3 小时** |
-| 复现 | 强确定性（SEED=42、deterministic algorithms） |
-| 数据 | 自备；评测 WikiText-103 perplexity（offline gate）|
-| 提交 | 公开 Kaggle Notebook + 可审计产物 |
+| 情感 4B ≈ 57% | 79%（原来是欠训的 SGD 读出头 → 公平闭式头） |
+| "末位塌缩是瓶颈" | 证伪：结构在冻结表示的**任何位置**都不存在 |
+| "可训练 attention 是真杠杆" | 证伪：attention 单独 +0.0pp，是 embedding 在扛 |
+| SST-2（ZeroBP-4B）= 49% 平坦 | 读出坍缩 artifact；公平探针真值 ≈ 53% |
+| k≥4 多步是"欠容量" | 证伪：5× 参数 + 2.5× 步数完全不动 → 真的是墙 |
 
-详见 [memory: competition-mechanics] / 文中各定稿文档。
+**方法论教训**：其中两个"表面数字"是**读出的假象、不是表示的事实**（欠训的情感头；坍缩的 SST-2 头）——关于表示能力的论断必须用公平、任务无关的探针，最好用两个（闭式 + BP 线性）。
 
----
+## 9. 结论
 
-## 2. 全景路线（从 0 到现在）
+- **无 BP 的 4B 预训练成立，但有清晰、架构性的能力边界。** ZeroBP-4B 在单 T4 预算下对语言建模和 bag 式任务（ppl ≈1355–1391、情感 79%）确实有用，且是一个可控的边界测量对象；但关系对齐与多步计算在它上面**装不进**，且这**不是 BP 预算不够**——大量甚至全深度 BP 在 4B 上仍失败。
+- **梯度必要但不充分：它需要一个可训练的结构底座。** 同样的任务在一个可训练注意力骨架 + 全 BP 上被轻易装入。所以 BP 只在架构给结构留出可训练位置时才有用。**"ZeroBP 做不了 NLI"被改写成："任何 BP 注入一个冻结 reservoir + 末位塌缩的骨架都装不进关系结构；一个标准注意力骨架轻松做到。"**
+- **任务结构决定难度序，好骨架也有诚实上限。** 两条栈上的难度序一致（bag ≪ 关系 ≪ 多步深度 ≪ 真实生成式数学）。Phase H 跨过了关系和浅多步，但它的 **k≥4 深度墙是抗规模的**，提示深层顺序推理需要的不只是"骨架 + 规模"，而是 curriculum / 中间监督 / chain-of-thought（本项目未测，是最可能的正道）。
 
-```
-竞赛侦察 ──▶ Phase A（nano 机制验证，本机 CPU）──▶ 诚实定稿 ──▶ Phase B（真实 T4 ≥4B）──▶ Phase C（schedule 稳定化）
-                │                                                        │
-                ├ E01-E08  局部学习 + 重要性 controller（单层）              ├ smoke/v1/v2/baseline-3h/PhaseC
-                ├ E09-E10  Stage3/4 nano-MoE 内容路由 + 特化 + 控制器        └ 4.156B 真跑、击败 BP 显存
-                ├ E11-E13  scale 3.1/3.2/3.3（多层/真实语料/4B-surrogate）
-                └ E14      覆盖诊断（controller 角色坐实）
-```
-
-**方法论**（教科书式、也是加分项）：**toy 验证机制 → real 看哪些 survive**。toy 排除架构混淆、确认机制级真相，再带到真实分布看退化——比"直接上真实数据迷路"干净。
+**未来方向**：用 curriculum / chain-of-thought（而非纯扩规模）打破 k≥4 墙；把 SNLI 扩到 MNLI、Phase H 上规模；在**可训练注意力底座**上验证更先进的 ZeroBP 局部规则（两条线合流）；在保持零 autograd 纯净的前提下继续提升 ZeroBP 的 LM 质量。
 
 ---
 
-## 3. 完整实验表（A 阶段 nano，E01–E14）
+## 10. 仓库导航
 
-| ID | 做了什么 | 结果 / 发现 |
-|---|---|---|
-| E01 | nano 切片 v1：deeply-supervised 局部头 + 重要性 vs 随机 | ppl 24、没过 unigram、多数类塌缩。bug：注意力缺残差 + embedding 没训 |
-| E02 | 修注意力残差 + embedding 训练 | ppl 24→**7.36**，能学了；headline 仍噪声 |
-| E03 | v2 系统：锁定 controller（leverage 等）+ 4 基线 + 指标 + 历史 | score 稳定性爆（1155）；importance≈random；model<bigram |
-| E04 | z-score 裁剪 | score 稳定性 1155→**0.45** |
-| E05 | 上下文依赖语料 + 统一读出头 + lr0.3 + 专家32 + 小初始化 | backbone **5.75 < bigram 6.37**；但加法式专家在强 backbone 上冗余 |
-| E06 | 诊断 backbone-only vs full | 专家"帮还是害"取决于 backbone 强弱（强则害） |
-| E07 | **B 实验**：瘛颈 backbone 让专家承重 | 专家承重（7.0→5.7）；importance vs random 仍噪声级 |
-| E08 | v3 controller（coverage/deficit） | 无稳定胜；**定因：专家"不可区分"（固定哈希无特化）→ 需 A** |
-| E09 | **Stage 3** nano-MoE：EMA-prototype 内容路由 + 容量限制 | ppl **5.97**；**purity 0.674 vs 随机 0.25**，SPECIALIZED✓。关键：路由键须载判别信号（topic 0.67/mean-pool 0.35/末token 0.29）|
-| E10 | **Stage 4** controller v3 接入特化 MoE | **importance>random 稳定**（4/5 seed）；gap 随预算收紧放大（k=10:+0.017→k=2:+0.079）|
-| E11 | **Scale 3.1** nano→small 堆叠 MoE | 特化更锐（purity 0.80→0.94）；**controller 优势随 N 侵蚀反转**（+0.048→−0.119）。修：coverage 随 N 放大（v4 (N/16)²）→ 64e 翻盘 +0.024 |
-| E12 | **Scale 3.2** 真实语料（P&P+莎翁，无标记） | **特化在真实数据成立**（coherence +0.224）；**controller 被噪声吞掉**（gap −0.24±3.25）|
-| E13 | **Scale 3.3** 4B-surrogate（大 N 极紧预算） | gap 各档冲不出噪声；**关键副产品：k=1 ppl ≈ k=16 → 极稀疏更新不掉质量** |
-| E14 | **覆盖诊断**（用覆盖指标而非 PPL 评 controller）| controller 在 PPL **和**覆盖上都不胜 random；根因：capacity 路由已均衡 → random 近最优 |
+**对外成果（研究报告 + 展示）**
+- [PAPER_DRAFT.md](PAPER_DRAFT.md) — 完整英文技术稿（~9–11pp，三线结构 + scorecard + 附录）。
+- [PAPER_workshop.md](PAPER_workshop.md) — 8 页精简 workshop 版。
+- [slides_outline.md](slides_outline.md) — 11 页幻灯提纲。
+- [results/](results/) — 真实 GPU 实验数据（SNLI / 多步深度 / GSM8K / SST-2 诊断 的原始 JSON + 索引）。
+- [runs/track1_radar.png](runs/track1_radar.png) — 能力雷达图。
 
-完整细节：[EXPERIMENTS.md](EXPERIMENTS.md)。
+**研究档案与治理**
+- [MASTER_ARCHIVE.md](MASTER_ARCHIVE.md) — 锁定结论的双语索引（【FACT】/【INTERPRETATION】/【PROPOSAL】分层）。
+- [项目总档案.md](项目总档案.md) — 中文深度总档。
+- [EXPERIMENT_LEDGER.md](EXPERIMENT_LEDGER.md) — 每个实验的配置 · commit · 指标 · gate · 结论。
+- [ARCHITECTURE.md](ARCHITECTURE.md) — v1.0（固定骨架）/ v2.0（可改区）边界；[docs/adr/](docs/adr/) — ADR-001…005 决策记录；各 `Phase-*.charter.md` — 阶段章程。
+- [ENGINEERING.md](ENGINEERING.md) — 工程规范（reset/clone 纪律、selfcheck、隔离红线）。
 
-## 3b. Kaggle 真实 T4 跑（Phase B/C）
+**代码**
+- `kaggle_zerograd_moe.py` — ZeroBP-4B 主实现（配置驱动 SMALL↔4B，纯 ZeroBP）。
+- `zerograd_nano.py` / `zerograd_moe*.py` — Phase A 机制研究（nano → 多层 → 真实语料）。
+- `phase_e*.py` / `phasee_nli_4b.py` / `f1_data.py` / `f2_aux.py` / `h1_attn.py` / `v2_readout.py` / `v2_attn.py` / `v2_deepbp.py` / `task_*.py` — 边界线研究脚本（含少量 BP，默认 off，与提交隔离）。
+- `phase_h/` — 控制线新骨架栈（`ph_base.py` Transformer + 各 G0/G1/G2/G2b 脚本），零依赖提交代码。
+- `track1_sst2_4b.py` / `track1_radar.py` — Track 1 真实 SST-2 探针与能力雷达。
 
-| 跑 | 配置 | 结果 |
-|---|---|---|
-| smoke | 4B，4min（先 P100 失败→强制 T4）| 4.156B、峰值 **7.52GB**、**6226 tok/s**、ppl 31→11.9、6/6 门 |
-| v1 | lr 0.1，40min | test ppl 1788，**震荡发散** |
-| v2 | lr 0.03 + warmup，40min | test ppl **1437**，单调稳定，6/6 门 |
-| baseline-3h | lr 0.03，满 3h | 触底 1752@6000步 → **漂移回 2383**；test 1919。"**3h 反而变差**" |
-| **Phase C** | lr 余弦衰减 + 路由冻结@5k + 早停 | **单调降到 1680，test ppl 1360**，route_drift=0，**7/7 门**，漂移消除 |
-
-定论文档：[Phase-B baseline 定论.md](Phase-B%20baseline%20定论.md)、runs/kaggle/。
-
----
-
-## 4. 发现的规律（深层结论）
-
-1. **特化机制鲁棒可扩、真实数据成立**：内容路由（EMA-prototype 最近邻 + 容量限制）+ 局部规则 → 专家按内容特化（合成 purity 0.67、真实 coherence +0.40）。这是确定能赢的一半。
-2. **"智能调度"在真实数据上不胜 random**：PPL 和覆盖两个指标都不胜。根因——**capacity 路由已把 forward 负载均衡，random 选已近最优，controller 无发挥空间**。
-3. **真正的硬通货 = training-time *update* sparsity**：每步只更新 k_update≪N 个专家而质量不掉（标准 MoE 是 sparse forward + dense backward；本工作 sparse forward + **sparse learning**）。使能者是 **regime**（局部规则独立可跳 + capacity 路由 + basin 鲁棒），**不是聪明 controller**（random 选也成立）。
-4. **指标错配 + basin 鲁棒**：PPL 测终点 basin、controller 作用在训练路径；`k=1≈k=16` 的 PPL 证明 basin 对"更新谁"高度鲁棒。
-5. **信号按噪声分层**：coverage/deficit 是**精确计数（零噪、可辨识、扩到任意 N）**；leverage/learnability 是**噪声估计（大 N 排序不可辨识）**。解释了 v4 coverage 缩放有效、value 信号在 scale 上失效。
-6. **稳定性规律**：lr 太高→震荡；无 lr 衰减/路由冻结→后期漂移（类灾难性遗忘）；**lr 余弦衰减 + 后期冻结路由 → 单调、无漂移、整个预算都有用**。
-
----
-
-## 5. 最终定论（详见 [Phase-A 定论.md](Phase-A%20定论.md)）
-
-**核心创新**：无 BP 约束下，内容路由 MoE + 逐专家局部规则可在**更新维度极度稀疏化**（k_update≪N）而不损质量 → 每步训练算力与总参数量解耦 → **4B 常驻在 T4/3h 可训，BP 不行**。是**可行性/效率**结论，非质量超越。
-
-**被实验否定的假设**：H1 智能 controller 降 PPL（否）/ H2 优势在覆盖上显现（否）/ H3 加法式专家有用（否→须上关键路径）/ H4 value 信号在 scale 可用（否→不可辨识）/ H5 特化依赖标记/真实数据失效（否，正向）/ H6 controller 是稀疏训练使能机制（否→regime 才是）。
-
-**controller 角色**：从"卖点"降级为**确定性 budget 调度器**——价值在 k_update 预算接口 + 可复现性 + 最坏 backlog 上界，**不是性能优化**。最终形态 = 确定性 deficit round-robin，value 信号去掉，只暴露 k_update。
-
-**两条腿（Kaggle 叙事，都不依赖聪明 controller）**：① 零梯度特化 MoE 真能学；② 4B 常驻 + 极稀疏训练击败 BP memory/speed。
-
----
-
-## 6. 代码与文件地图
-
-**算法/实验代码（演进顺序）**
-- `zerograd_nano.py` — Phase A 单层 nano 切片（E01–E08）：deeply-supervised 局部规则 + 重要性 controller + 数据/评测/日志。
-- `zerograd_moe.py` — Stage 3/4 nano-MoE：EMA-prototype 内容路由 + 容量限制 + `Ctrl`（v3/v4/v5 controller）。
-- `zerograd_moe_scale.py` — 多层堆叠 MoE（scale 3.1，per-layer 路由/专家/控制器，v4 coverage 自动缩放）。
-- `zerograd_moe_nat.py` — 真实语料（3.2/3.3）+ 覆盖诊断（E14）；无标签特化度量（coherence）。
-- `kaggle_zerograd_moe.py` / `.ipynb` — **≥4B Kaggle 提交**（Phase B/C，自包含，配置驱动 SMALL↔KAGGLE）。
-
-**仪表盘**（自包含 HTML，读各自 dataX.js）
-- `dashboard/index.html`（主）、`stageA.html`（特化）、`stage4.html`（控制器消融）、`scale.html`（可扩性）。
-
-**数据 / 产物**
-- `data/natural.txt`（真实语料子集）、`runs/`（本机）、`runs/kaggle/`（T4 产物）。
-
-**设计 / 定稿文档**（思路与结论）
-- [zero gradient.md](zero%20gradient.md) — 最初思考笔记（BP/PC/FF/LOCO/ADMM 拆解 + Dynamic Layerwise 设想）
-- [项目路线与设计.md](项目路线与设计.md) — 初版路线与设计
-- [EXPERIMENTS.md](EXPERIMENTS.md) — E01–E14 实验日志
-- [阶段A设计.md](阶段A设计.md) — Phase A（MoE-faithful）锁定设计
-- [Phase-A 复盘与校准.md](Phase-A%20复盘与校准.md) — 指标错配校准（PPL vs 路径）
-- [Phase-A 定论.md](Phase-A%20定论.md) — 核心创新 / 被否假设 / controller 角色
-- [Phase-B 说明.md](Phase-B%20说明.md) — Kaggle 运行说明
-- [Phase-B baseline 定论.md](Phase-B%20baseline%20定论.md) — 原设定 baseline 实测定论
-- [路线图 Phase C-E.md](路线图%20Phase%20C-E.md) — C/D/C.1/E 路线图
-
----
-
-## 7. 复现 / 运行
-
+**复现（本机，无 GPU）**
 ```bash
-# 本机逻辑验证（小配置，CPU，零 autograd，全部合规门）
-python kaggle_zerograd_moe.py
-
-# Kaggle T4（≥4B 真跑）：上传 kaggle_zerograd_moe.ipynb，GPU=T4，(可选)挂 WikiText-103，运行
-# 自动化：kaggle kernels push（machine_shape="NvidiaTeslaT4"）→ status 轮询 → output 拉回
+python3 kaggle_zerograd_moe.py     # ZeroBP 小配置：零 autograd、确定性、合规门（final_ppl 6.251）
+python3 phase_h/ph_nli.py          # Phase H G0：合成 NLI → 100%（对照 ZeroBP 的边界）
+python3 track1_radar.py            # 生成能力雷达图
 ```
 
----
-
-## 8. 当前状态与下一步
-
-- ✅ **Phase A–C**（机制 → 真实 T4 ≥4B → schedule 稳定化）；**Phase D**（BPE+MLP 头，test ppl 1391/1355）；**Phase E/F**（能力矩阵 + 少量 BP 边界，情感 79% / NLI·多步硬限）；**Phase G**（v2.0 三杠杆全证伪，收口）；**Phase H**（新骨架控制实验：真实 SNLI 69.97%、多步 k≤3 装进、k≥4 抗规模墙、GSM8K 2%、SST-2 ≈chance）。
-- ✅ **对外成果就绪**：完整技术稿 + 8 页精简 + 幻灯提纲 + Kaggle 提交说明 + `results/` 真实数据 + 能力雷达（见文档地图）。
-- **可选下一步**：(a) 提交/更新 Kaggle 纯 ZeroBP baseline；(b) 打破 k≥4 多步墙（curriculum / chain-of-thought，而非纯扩规模）；(c) 把 SNLI 扩到 MNLI、Phase H 上规模；(d) 在可训练 attention 底座上验证更强 ZeroBP 局部规则（两条线合流）。
+> Kaggle 提交与平台细节见 [SUBMISSION.md](SUBMISSION.md) / [KAGGLE_README.md](KAGGLE_README.md)（与本研究报告解耦）。
