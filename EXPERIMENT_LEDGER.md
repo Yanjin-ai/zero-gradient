@@ -57,6 +57,14 @@
 | **提交修复** | `kaggle_run.ipynb` 曾内嵌 pre-D-1 word-level 快照；已从当前代码重生成（bpe+mlp，纯 ZeroBP） | `ef7f213` |
 | load_state_dict 别名 bug 修复 | clone-on-load；`selfcheck.py` 守护；勘误已应用 | `66d5cc4` |
 
+## 7. Phase H / v3.0 新骨架栈（research-only，独立 `phase_h/`，零依赖 ZeroBP）
+> 治理 = [ADR-005](docs/adr/ADR-005-phase-h-new-backbone.md)；设计 = [Phase-H charter.md](Phase-H%20charter.md)。与提交线**完全隔离**（互不 import；提交默认 6.251 / 零 autograd 不变）。标准多层双向 attention + mean-pool 读出 + 全 BP（AdamW）。本地 CPU 跑小配置合成任务（与 ZeroBP 矩阵**同分布**，apples-to-apples）。
+| 实验 | 结果 [FACT] | 文件 |
+|---|---|---|
+| **G0-NLI**（4L×4H d128, 0.80M, 全 BP） | 合成 NLI（同 task_nli 分布）val **100.0%**@step500 → 收敛 100%。**vs ZeroBP 锁定：深 BP 65.7%（小）/ 4B chance** | `phase_h/ph_nli.py` |
+| **G0-arith**（同 base） | 2 步算术（同 task_arith 分布）val **100.0%**@step1000。**vs ZeroBP 锁定：任何 BP 深度 19–21% chance＝不可安装** | `phase_h/ph_arith.py` |
+| 🔒 G0 子结论 [INTERP] | 同一标准 trainable-attn base + 全 BP **同时攻克**关系（NLI）与多步（算术）两个 ZeroBP 骨架装不进的维度 → **瓶颈是骨架（冻结 reservoir attention + 末位塌缩），非任务/非 BP 预算**。**作用域**：合成、小模型、完全可学；**未**触及真实 SNLI/MNLI/GSM8K（G1/G2 需 GPU）。G0 过 → Phase H 有腿，值得上 GPU | — |
+
 ## 勘误（Erratum）— 必须知道
 `load_state_dict` 在 CPU 上 `.to(cpu)` 不复制 → reset 后 base.E 别名 golden checkpoint，随后原地 `index_add_` 污染 golden，使**多 reset 小配置实验**串味。**已修**（commit `66d5cc4`，clone）。
 - **受影响（已用 corrected 数）**：adapt_sentiment / adapt_mitigate / d2_deepsignal / task_nli。例：适配遗忘 N1000 原 +63 → corrected **+44**；2.1 冻头原 92.4 → corrected **86.7%**；backbone 缩放变体原虚高 95% → corrected **~chance 失效**。
