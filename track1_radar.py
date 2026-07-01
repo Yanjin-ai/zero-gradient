@@ -21,10 +21,10 @@ DEFAULT = {
          "provenance": ["WikiText-103 4B, ~unigram+51%", "4B Mixed-BP embedding 79%",
                         "4B zero-shot = chance 33.4%", "any BP depth = chance 20%"]},
         {"name": "Phase H (real G1/G2, GPU)", "values": [None, None, 0.70, 1.00],
-         "provenance": ["not run (Phase H LM pending)", "not run (Track1 SST-2 pending)",
-                        "REAL SNLI 69.97% (12.4M, T4)", "real 2-step 100% (k>=4 still chance)"]},
+         "provenance": ["not run (Phase H LM pending)", "not run (Phase H sentiment pending)",
+                        "REAL SNLI 69.97% (12.4M, T4)", "k<=3 = 100%; k>=4 chance even at 21M (real wall)"]},
     ],
-    "note": "Phase H relational = REAL SNLI 69.97% (vs ZeroBP 4B chance 33.4%); multi-step = 2-step 100% (ZeroBP chance at any depth), deep k>=4 pending scale. LM/sentiment axes not yet run for Phase H.",
+    "note": "Phase H relational = REAL SNLI 69.97% (vs ZeroBP 4B chance 33.4%). Multi-step: installs k<=3 (100%; ZeroBP is chance at ANY depth) but hits a scale-resistant wall at k>=4 (unchanged at 21M/15k). ZeroBP-4B SST-2 = ~chance (BP probe 53%). LM/sentiment axes not yet run for Phase H.",
 }
 
 
