@@ -59,11 +59,11 @@ def closed_preds(base, hp, X, bs=64):                            # argmax preds 
 def bp_linear_probe(Htr, Ytr, Hv, ncls, steps=2000, lr=1e-2):    # standard BP linear head (AdamW) on frozen rep
     d = Htr.shape[1]; head = nn.Linear(d, ncls).to(Htr.device)
     opt = torch.optim.AdamW(head.parameters(), lr=lr, weight_decay=1e-4); lossf = nn.CrossEntropyLoss()
-    g = torch.Generator(device="cpu").manual_seed(SEED)
-    Ytr_d = Ytr.to(Htr.device)
-    for step in range(steps):
-        ix = torch.randint(0, len(Htr), (128,), generator=g)
-        loss = lossf(head(Htr[ix]), Ytr_d[ix]); opt.zero_grad(); loss.backward(); opt.step()
+    g = torch.Generator().manual_seed(SEED); Ytr_d = Ytr.to(Htr.device)
+    with torch.enable_grad():                                    # submission Z disables grad globally -> re-enable for the probe
+        for step in range(steps):
+            ix = torch.randint(0, len(Htr), (128,), generator=g).to(Htr.device)
+            loss = lossf(head(Htr[ix]), Ytr_d[ix]); opt.zero_grad(); loss.backward(); opt.step()
     with torch.no_grad():
         return head(Hv).argmax(-1).cpu()
 
