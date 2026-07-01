@@ -1,6 +1,7 @@
 # MASTER ARCHIVE — 锁定结论索引（接棒必读）
 
 > **定位**：本文件是**锁定结论的英文/双语索引**，给新接手者一页看清"什么已成定论、什么是解读、什么是提案"。深度叙事见 [`项目总档案.md`](项目总档案.md)（中文总档）；工程规范见 [`ENGINEERING.md`](ENGINEERING.md)；提交完整性见 [`SUBMISSION.md`](SUBMISSION.md)；架构边界见 [`ARCHITECTURE.md`](ARCHITECTURE.md)；决策记录见 [`docs/adr/`](docs/adr/)；实验台账见 [`EXPERIMENT_LEDGER.md`](EXPERIMENT_LEDGER.md)。
+> **对外成果**：完整技术稿 [`PAPER_DRAFT.md`](PAPER_DRAFT.md)（~9-11pp）· 8 页精简 [`PAPER_workshop.md`](PAPER_workshop.md) · 幻灯提纲 [`slides_outline.md`](slides_outline.md) · Kaggle 提交说明 [`KAGGLE_README.md`](KAGGLE_README.md)。
 >
 > **标注约定**：**【LOCKED FACT】**=已实测、不得改写的结论；**【INTERPRETATION】**=对事实的推断/判读；**【PROPOSAL】**=未验证的下一步建议。**最后更新 2026-06-30。**
 >
