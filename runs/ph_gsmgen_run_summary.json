@@ -1,0 +1,20 @@
+{
+  "phase": "H",
+  "gate": "G2b",
+  "task": "generative-reasoning",
+  "source": "synth",
+  "n_steps": 2,
+  "params_M": 0.799,
+  "config": {
+    "layers": 4,
+    "heads": 4,
+    "d_model": 128,
+    "seq_len": 11,
+    "train_steps": 2000
+  },
+  "exact_match": 0.666,
+  "zerobp_contrast": "ZeroBP installs multi-step at NO BP depth",
+  "note": "synthetic generative arithmetic",
+  "wall_s": 65.5,
+  "device": "cpu"
+}

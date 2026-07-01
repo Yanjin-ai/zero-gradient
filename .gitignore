@@ -8,3 +8,6 @@ __pycache__/
 kaggle_*/out/
 runs/orchestrator.log
 runs/experiments.jsonl
+
+# transient Kaggle pull outputs (nested); canonical results archived in results/
+**/out/

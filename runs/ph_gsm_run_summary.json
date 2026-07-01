@@ -1,0 +1,33 @@
+{
+  "phase": "H",
+  "gate": "G2",
+  "task": "multi-step-arithmetic",
+  "mod": 5,
+  "config": {
+    "layers": 4,
+    "heads": 4,
+    "d_model": 128,
+    "train_steps": 1500
+  },
+  "chance": 0.2,
+  "by_depth": [
+    {
+      "n_steps": 2,
+      "val_acc": 1.0,
+      "params_M": 0.796
+    },
+    {
+      "n_steps": 3,
+      "val_acc": 0.252,
+      "params_M": 0.796
+    },
+    {
+      "n_steps": 4,
+      "val_acc": 0.1927,
+      "params_M": 0.796
+    }
+  ],
+  "zerobp_contrast": "ZeroBP: chance at k=2, every BP depth (uninstallable)",
+  "wall_s": 93.9,
+  "device": "cpu"
+}

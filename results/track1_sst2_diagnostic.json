@@ -1,0 +1,58 @@
+{
+  "checkpoint": "/kaggle/input/notebooks/yanjinli2001/post-backprop-zerograd-4b-checkpoint/best_ckpt.pt",
+  "param_gigaparams": 4.16,
+  "task": "SST2-sentiment",
+  "branch": "Track1 ZeroBP 4B + Mixed-BP (research, DIAGNOSTIC)",
+  "dataset": "glue/sst2",
+  "majority_baseline": 0.509,
+  "val_size": 872,
+  "true_class_dist": [
+    428,
+    444
+  ],
+  "bp_steps": 1000,
+  "bp_lr": 0.1,
+  "wiki_ppl_zeroshot": 1355.406,
+  "variants": {
+    "zeroshot": {
+      "closed_acc": 0.4908,
+      "closed_pred_dist": [
+        872,
+        0
+      ],
+      "bp_linear_acc": 0.5149,
+      "bp_linear_pred_dist": [
+        255,
+        617
+      ],
+      "wiki_ppl": 1355.406
+    },
+    "mixedbp_emb": {
+      "closed_acc": 0.4908,
+      "closed_pred_dist": [
+        872,
+        0
+      ],
+      "bp_linear_acc": 0.5252,
+      "bp_linear_pred_dist": [
+        264,
+        608
+      ],
+      "wiki_ppl": 1350.811
+    },
+    "mixedbp_emb_attn": {
+      "closed_acc": 0.4908,
+      "closed_pred_dist": [
+        872,
+        0
+      ],
+      "bp_linear_acc": 0.5333,
+      "bp_linear_pred_dist": [
+        229,
+        643
+      ],
+      "wiki_ppl": 1352.682
+    }
+  },
+  "uses_autograd": true
+}

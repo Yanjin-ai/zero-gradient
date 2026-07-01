@@ -1,0 +1,18 @@
+{
+  "checkpoint": "/Volumes/SANDISK ELE/zero gradient/runs/best_ckpt.pt",
+  "param_gigaparams": 0.003,
+  "task": "NLI-3class",
+  "branch": "Phase E hybrid BP (research)",
+  "majority_baseline": 0.341,
+  "bp_steps": 300,
+  "bp_lr": 0.1,
+  "zeroshot_acc": 0.3333,
+  "mixedbp_emb_acc": 0.334,
+  "mixedbp_emb_attn_acc": 0.334,
+  "wiki_ppl_zeroshot": 6.817,
+  "wiki_ppl_emb": 6.821,
+  "wiki_ppl_emb_attn": 6.823,
+  "forget_emb": 0.005,
+  "forget_emb_attn": 0.006,
+  "uses_autograd": true
+}

@@ -1,0 +1,22 @@
+{
+  "phase": "H",
+  "gate": "G1",
+  "task": "NLI",
+  "source": "hf",
+  "dataset": "snli",
+  "params_M": 12.436,
+  "config": {
+    "layers": 6,
+    "heads": 8,
+    "d_model": 256,
+    "max_len": 64
+  },
+  "train_size": 549367,
+  "val_size": 9842,
+  "steps": 12873,
+  "val_acc": 0.6997,
+  "majority": 0.3382,
+  "zerobp_contrast": "ZeroBP 4B NLI = chance (33.4%)",
+  "wall_s": 1505.0,
+  "device": "cuda"
+}

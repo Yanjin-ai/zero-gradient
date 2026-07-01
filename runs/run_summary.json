@@ -28,7 +28,9 @@
     "attn_train": false,
     "attn_lr_scale": 0.1,
     "attn_train_wk": true,
-    "save_ckpt": false
+    "save_ckpt": false,
+    "freeze_heads": false,
+    "backbone_lr_scale": 1.0
   },
   "corpus": "synthetic(local)/word",
   "param_count": 3167040,
@@ -59,22 +61,22 @@
     {
       "step": 300,
       "val_ppl": 9.678,
-      "t": 1.5
+      "t": 1.6
     },
     {
       "step": 400,
       "val_ppl": 7.88,
-      "t": 2.0
+      "t": 2.1
     },
     {
       "step": 500,
       "val_ppl": 6.864,
-      "t": 2.5
+      "t": 2.6
     },
     {
       "step": 599,
       "val_ppl": 6.251,
-      "t": 3.0
+      "t": 3.1
     }
   ],
   "train": {
@@ -89,7 +91,7 @@
         "attn_dw": null,
         "frozen": false,
         "t": 0.1,
-        "tok_s": 11824
+        "tok_s": 12572
       },
       {
         "step": 100,
@@ -101,7 +103,7 @@
         "attn_dw": null,
         "frozen": false,
         "t": 0.6,
-        "tok_s": 178509
+        "tok_s": 171207
       },
       {
         "step": 200,
@@ -113,7 +115,7 @@
         "attn_dw": null,
         "frozen": false,
         "t": 1.1,
-        "tok_s": 193823
+        "tok_s": 185749
       },
       {
         "step": 300,
@@ -124,8 +126,8 @@
         "route_drift": 0.00971,
         "attn_dw": null,
         "frozen": false,
-        "t": 1.5,
-        "tok_s": 199584
+        "t": 1.6,
+        "tok_s": 190906
       },
       {
         "step": 400,
@@ -136,8 +138,8 @@
         "route_drift": 0.00456,
         "attn_dw": null,
         "frozen": false,
-        "t": 2.0,
-        "tok_s": 200396
+        "t": 2.1,
+        "tok_s": 194596
       },
       {
         "step": 500,
@@ -148,8 +150,8 @@
         "route_drift": 0.0029,
         "attn_dw": null,
         "frozen": false,
-        "t": 2.5,
-        "tok_s": 203498
+        "t": 2.6,
+        "tok_s": 197108
       },
       {
         "step": 599,
@@ -160,12 +162,12 @@
         "route_drift": 0.00101,
         "attn_dw": null,
         "frozen": false,
-        "t": 3.0,
-        "tok_s": 205752
+        "t": 3.1,
+        "tok_s": 198727
       }
     ],
     "steps": 600,
-    "wall_s": 3.0,
+    "wall_s": 3.1,
     "peak_mem_mb": 12.1,
     "final_ppl": 6.251,
     "best_ppl": 6.251,
@@ -189,22 +191,22 @@
       {
         "step": 300,
         "val_ppl": 9.678,
-        "t": 1.5
+        "t": 1.6
       },
       {
         "step": 400,
         "val_ppl": 7.88,
-        "t": 2.0
+        "t": 2.1
       },
       {
         "step": 500,
         "val_ppl": 6.864,
-        "t": 2.5
+        "t": 2.6
       },
       {
         "step": 599,
         "val_ppl": 6.251,
-        "t": 3.0
+        "t": 3.1
       }
     ],
     "autograd_used": false
@@ -226,5 +228,5 @@
   },
   "gates_passed": 6,
   "gates_total": 7,
-  "ts": "2026-06-28 15:40:36"
+  "ts": "2026-07-02 00:05:20"
 }
