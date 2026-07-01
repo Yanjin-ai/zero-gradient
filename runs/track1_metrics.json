@@ -22,20 +22,20 @@
       ]
     },
     {
-      "name": "Phase H (G0, synthetic*)",
+      "name": "Phase H (real G1/G2, GPU)",
       "values": [
         null,
         null,
-        1.0,
+        0.7,
         1.0
       ],
       "provenance": [
-        "G1 pending (GPU/SNLI)",
-        "Track1 pending",
-        "synthetic NLI 100%",
-        "synthetic 2-step 100%"
+        "not run (Phase H LM pending)",
+        "not run (Track1 SST-2 pending)",
+        "REAL SNLI 69.97% (12.4M, T4)",
+        "real 2-step 100% (k>=4 still chance)"
       ]
     }
   ],
-  "note": "Phase H* = small-config synthetic G0 (proof the backbone was the limit); real SNLI/GSM8K (G1/G2) pending on GPU."
+  "note": "Phase H relational = REAL SNLI 69.97% (vs ZeroBP 4B chance 33.4%); multi-step = 2-step 100% (ZeroBP chance at any depth), deep k>=4 pending scale. LM/sentiment axes not yet run for Phase H."
 }

@@ -20,10 +20,11 @@ DEFAULT = {
         {"name": "ZeroBP 4B (locked, real)", "values": [0.51, 0.79, 0.334, 0.20],
          "provenance": ["WikiText-103 4B, ~unigram+51%", "4B Mixed-BP embedding 79%",
                         "4B zero-shot = chance 33.4%", "any BP depth = chance 20%"]},
-        {"name": "Phase H (G0, synthetic*)", "values": [None, None, 1.00, 1.00],
-         "provenance": ["G1 pending (GPU/SNLI)", "Track1 pending", "synthetic NLI 100%", "synthetic 2-step 100%"]},
+        {"name": "Phase H (real G1/G2, GPU)", "values": [None, None, 0.70, 1.00],
+         "provenance": ["not run (Phase H LM pending)", "not run (Track1 SST-2 pending)",
+                        "REAL SNLI 69.97% (12.4M, T4)", "real 2-step 100% (k>=4 still chance)"]},
     ],
-    "note": "Phase H* = small-config synthetic G0 (proof the backbone was the limit); real SNLI/GSM8K (G1/G2) pending on GPU.",
+    "note": "Phase H relational = REAL SNLI 69.97% (vs ZeroBP 4B chance 33.4%); multi-step = 2-step 100% (ZeroBP chance at any depth), deep k>=4 pending scale. LM/sentiment axes not yet run for Phase H.",
 }
 
 
