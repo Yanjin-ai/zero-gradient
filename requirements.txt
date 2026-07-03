@@ -1,0 +1,10 @@
+# Core (backprop-free model, boundary experiments, Phase H control)
+torch>=2.2            # tested on 2.8.0
+matplotlib>=3.7       # figures (make_figures.py, track1_radar.py)
+nbformat>=5.9         # Kaggle notebook generation (build_*_kernels.py)
+
+# Real-data experiments (Phase H G1/G2b, Track-1 SST-2) — GPU/Kaggle
+datasets>=2.19        # SNLI / GSM8K / GLUE-SST2 loaders
+
+# Kaggle deployment (optional; see docs/KAGGLE_README.md)
+kaggle==2.2.1         # pin kagglesdk==0.1.31 (0.1.32 is a broken wheel)

@@ -4,7 +4,7 @@
 >
 > **阅读约定**：文中用 **【事实】** 标注已被实验验证的结论，用 **【判断】** 标注当前推断 / 假设 / 建议。请勿把两者混为一谈。
 >
-> **仓库**：`github.com/Yanjin-ai/zerogradient`。本档案是**中文深度总档**；锁定结论的英文索引见 [`MASTER_ARCHIVE.md`](MASTER_ARCHIVE.md)，架构边界 [`ARCHITECTURE.md`](ARCHITECTURE.md)，提交完整性 [`SUBMISSION.md`](SUBMISSION.md)，决策记录 [`docs/adr/`](docs/adr/)，实验台账 [`EXPERIMENT_LEDGER.md`](EXPERIMENT_LEDGER.md)，工程规范 [`ENGINEERING.md`](ENGINEERING.md)，`README.md` 简版索引。
+> **仓库**：`github.com/Yanjin-ai/zerogradient`。本档案是**中文深度总档**；锁定结论的英文索引见 [`MASTER_ARCHIVE.md`](MASTER_ARCHIVE.md)，架构边界 [`ARCHITECTURE.md`](ARCHITECTURE.md)，提交完整性 [`SUBMISSION.md`](SUBMISSION.md)，决策记录 [`docs/adr/`](adr)，实验台账 [`EXPERIMENT_LEDGER.md`](EXPERIMENT_LEDGER.md)，工程规范 [`ENGINEERING.md`](ENGINEERING.md)，`README.md` 简版索引。
 > **最后更新**：2026-06-30。
 
 ---

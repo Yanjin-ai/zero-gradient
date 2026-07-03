@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+title: "ZeroBP-4B and Phase H: A Backprop-Free 4B Language Model, its Capability Boundary, and a Trainable-Attention Control"
+message: "If you use this work, please cite it."
+type: software
+authors:
+  - family-names: Li
+    given-names: Yanjin
+    alias: Yanjin-ai
+year: 2026
+url: "https://github.com/Yanjin-ai/zero-gradient"
+abstract: >-
+  A resource-constrained study of a 4.16B-parameter language model trained with zero global
+  backpropagation on a single GPU. It maps the model's reasoning capability boundary and uses an
+  isolated trainable-attention control backbone to show the boundary is architectural rather than
+  task-intrinsic (real SNLI 33.4% -> 69.97%), while surfacing an honest scale-resistant multi-step
+  reasoning limit.

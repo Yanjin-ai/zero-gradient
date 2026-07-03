@@ -6,8 +6,17 @@ __pycache__/
 *.pt
 
 kaggle_*/out/
-runs/orchestrator.log
-runs/experiments.jsonl
 
 # transient Kaggle pull outputs (nested); canonical results archived in results/
 **/out/
+
+# regenerable research kernel dirs (build_kaggle_kernels.py recreates them; only kaggle_run/ is tracked)
+kaggle_ckpt/
+kaggle_c1/
+kaggle_adapt/
+kaggle_phase_e/
+kaggle_phasee_nli/
+kaggle_track1_sst2/
+
+# all runtime output (canonical results live in results/ and figures/)
+runs/

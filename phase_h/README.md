@@ -4,7 +4,7 @@ A clean-break standard multi-layer trainable-attention Transformer (full backpro
 ZeroBP 4B submission. **Zero dependency on `kaggle_zerograd_moe`** — this directory can move to its own repo
 unchanged. Never imported by the submission; submission default path stays `6.251` / zero autograd.
 
-Governance: [ADR-005](../docs/adr/ADR-005-phase-h-new-backbone.md) · design: [Phase-H charter](../Phase-H%20charter.md)
+Governance: [ADR-005](../docs/adr/ADR-005-phase-h-new-backbone.md) · design: Phase-H charter
 
 ## Files
 | file | role |

@@ -58,7 +58,7 @@
 | load_state_dict 别名 bug 修复 | clone-on-load；`selfcheck.py` 守护；勘误已应用 | `66d5cc4` |
 
 ## 7. Phase H / v3.0 新骨架栈（research-only，独立 `phase_h/`，零依赖 ZeroBP）
-> 治理 = [ADR-005](docs/adr/ADR-005-phase-h-new-backbone.md)；设计 = [Phase-H charter.md](Phase-H%20charter.md)。与提交线**完全隔离**（互不 import；提交默认 6.251 / 零 autograd 不变）。标准多层双向 attention + mean-pool 读出 + 全 BP（AdamW）。本地 CPU 跑小配置合成任务（与 ZeroBP 矩阵**同分布**，apples-to-apples）。
+> 治理 = [ADR-005](adr/ADR-005-phase-h-new-backbone.md)；设计 = Phase-H charter.md。与提交线**完全隔离**（互不 import；提交默认 6.251 / 零 autograd 不变）。标准多层双向 attention + mean-pool 读出 + 全 BP（AdamW）。本地 CPU 跑小配置合成任务（与 ZeroBP 矩阵**同分布**，apples-to-apples）。
 | 实验 | 结果 [FACT] | 文件 |
 |---|---|---|
 | **G0-NLI**（4L×4H d128, 0.80M, 全 BP） | 合成 NLI（同 task_nli 分布）val **100.0%**@step500 → 收敛 100%。**vs ZeroBP 锁定：深 BP 65.7%（小）/ 4B chance** | `phase_h/ph_nli.py` |

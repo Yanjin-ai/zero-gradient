@@ -1,1 +1,0 @@
-window.STAGE_N={"stage": "A-scale-3.2-natural", "corpus": "Pride&Prejudice+Shakespeare", "vocab": 4000, "unigram": 821.2, "bigram": 648.97, "importance": 393.643, "importance_std": 5.706, "random": 393.4, "uniform": 398.206, "gap": -0.242, "gap_std": 3.25, "pos": 2, "n": 4, "coherence": 0.2243, "route_entropy": 2.94, "max_entropy": 3.466, "ts": "2026-06-26 17:33:56"};

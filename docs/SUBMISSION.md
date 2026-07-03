@@ -37,4 +37,4 @@ kaggle kernels output yanjinli2001/post-backprop-zerograd-moe -p kaggle_run/out
 ## 维护规则
 任何对 `kaggle_zerograd_moe.py` 的改动**必须**：① 保持默认路径零 autograd / 6.251 不变（研究 flag 一律默认 no-op）；② 跑 `python3 build_kaggle_kernels.py` 重生成提交 notebook；③ 本说明的完整性表重新过一遍。
 
-> **v1.0 / v2.0 边界**：任何会破坏默认 `6.251` / 零 autograd 的改动（如改架构 readout、可训练 attention、更深 BP）= **v2.0 / non-submission / research-only**，必须新建独立路径、默认 off，**不进本提交**（见 [ARCHITECTURE.md](ARCHITECTURE.md) 与 [docs/adr/ADR-003](docs/adr/ADR-003-submission-purity.md)/[ADR-004](docs/adr/ADR-004-v2-opening.md)）。
+> **v1.0 / v2.0 边界**：任何会破坏默认 `6.251` / 零 autograd 的改动（如改架构 readout、可训练 attention、更深 BP）= **v2.0 / non-submission / research-only**，必须新建独立路径、默认 off，**不进本提交**（见 [ARCHITECTURE.md](ARCHITECTURE.md) 与 [docs/adr/ADR-003](adr/ADR-003-submission-purity.md)/[ADR-004](adr/ADR-004-v2-opening.md)）。

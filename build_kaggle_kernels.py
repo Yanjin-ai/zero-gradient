@@ -74,29 +74,6 @@ c1.metadata.update(KSPEC)
 (root/"kaggle_c1").mkdir(exist_ok=True)
 nbf.write(c1, str(root/"kaggle_c1"/"c1_kernel.ipynb"))
 
-# ---- v1.1 4B-Adapt kernel: in-domain adaptation + C.1, with forgetting mitigation ----
-ad = nbf.v4.new_notebook()
-ad.cells = [
-    nbf.v4.new_markdown_cell(
-        "# v1.1 4B-Adapt — in-domain adaptation + C.1 (zero autograd, mitigated)\n"
-        "Reloads `best_ckpt.pt` (via `kernel_sources`), does a SHORT in-domain zero-BP LM adaptation on the "
-        "sentiment domain (small lr + WikiText replay + frozen routing to limit forgetting), then head-only "
-        "MLP sentiment. Reports 4B-ZeroShot vs 4B-Adapt acc + WikiText ppl drift. Attach WikiText-103."),
-    wf("kaggle_zerograd_moe.py"), wf("c1_4b.py"), wf("adapt_4b.py"),
-    nbf.v4.new_code_cell(
-        "import os, json\n"
-        "os.environ.setdefault('ZG_ADAPT_STEPS', '300')         # moderate adaptation budget\n"
-        "os.environ.setdefault('ZG_ADAPT_LR', '0.02')           # < pretrain 0.03\n"
-        "os.environ.setdefault('ZG_ADAPT_REPLAY', '0.3')        # 30% WikiText replay\n"
-        "os.environ.setdefault('ZG_ADAPT_FREEZE_HEADS', '1')    # 2.1 mitigation: protect the LM head (cut forgetting)\n"
-        "os.environ.setdefault('ZG_C1_STEPS', '1000')\n"
-        "import adapt_4b\n"
-        "print(json.dumps(adapt_4b.main(), indent=2, default=float))"),
-]
-ad.metadata.update(KSPEC)
-(root/"kaggle_adapt").mkdir(exist_ok=True)
-nbf.write(ad, str(root/"kaggle_adapt"/"adapt_kernel.ipynb"))
-
 # ---- Phase E (hybrid BP) kernel: research branch, autograd on embedding + task head ----
 pe = nbf.v4.new_notebook()
 pe.cells = [
@@ -138,5 +115,5 @@ pn.metadata.update(KSPEC)
 nbf.write(pn, str(root/"kaggle_phasee_nli"/"phasee_nli_kernel.ipynb"))
 
 for p in ["kaggle_run/kaggle_run.ipynb", "kaggle_ckpt/ckpt_kernel.ipynb", "kaggle_c1/c1_kernel.ipynb",
-          "kaggle_adapt/adapt_kernel.ipynb", "kaggle_phase_e/phase_e_kernel.ipynb", "kaggle_phasee_nli/phasee_nli_kernel.ipynb"]:
+          "kaggle_phase_e/phase_e_kernel.ipynb", "kaggle_phasee_nli/phasee_nli_kernel.ipynb"]:
     print(f"wrote {p} ({(root/p).stat().st_size//1024} KB)")

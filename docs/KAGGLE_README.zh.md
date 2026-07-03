@@ -51,4 +51,4 @@ python3 selfcheck.py                     # reset/读出守护通过
 
 ## 范围
 
-这是**纯 ZeroBP 基线**参赛项。所有基于反向传播的研究(能力边界研究与 Phase H 可训练注意力对照)都在提交永不 import 的独立脚本里;完整性清单见 `SUBMISSION.md`,完整研究见 `PAPER_DRAFT.md`(中文研究报告见 [README.zh.md](README.zh.md))。
+这是**纯 ZeroBP 基线**参赛项。所有基于反向传播的研究(能力边界研究与 Phase H 可训练注意力对照)都在提交永不 import 的独立脚本里;完整性清单见 `SUBMISSION.md`,完整研究见 `PAPER_DRAFT.md`(中文研究报告见 [README.zh.md](../README.zh.md))。

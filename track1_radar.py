@@ -11,8 +11,8 @@ Run:  python3 track1_radar.py     ->  runs/track1_radar.png
 """
 import os, json, math
 
-ROOT = os.path.dirname(os.path.abspath(__file__)); RUNS = os.path.join(ROOT, "runs")
-METRICS = os.path.join(RUNS, "track1_metrics.json"); OUT = os.path.join(RUNS, "track1_radar.png")
+ROOT = os.path.dirname(os.path.abspath(__file__)); FIG = os.path.join(ROOT, "figures"); os.makedirs(FIG, exist_ok=True)
+METRICS = os.path.join(FIG, "track1_metrics.json"); OUT = os.path.join(FIG, "track1_radar.png")
 
 DEFAULT = {
     "axes": ["Language\nModeling", "Sentiment /\nClassification", "Relational\n(NLI)", "Multi-step\n(Arithmetic)"],
@@ -29,7 +29,7 @@ DEFAULT = {
 
 
 def main():
-    os.makedirs(RUNS, exist_ok=True)
+    os.makedirs(FIG, exist_ok=True)
     if not os.path.exists(METRICS):
         with open(METRICS, "w") as f: json.dump(DEFAULT, f, indent=2)
         print(f"seeded {METRICS} (edit + re-run to refresh with real Kaggle numbers)")
