@@ -33,6 +33,21 @@
 
 ---
 
+## How the research unfolded
+
+Five stages, each answering the question the previous one raised. *(These correspond to the internal
+stage labels A–H used in the logs; the plain description is what each stage actually did.)*
+
+| Stage | What it did | Outcome |
+|---|---|---|
+| **1 · Build a backprop-free model** *(A–D)* | Prototype the local-learning rule at tiny scale, identify what makes it learn (content-based expert specialization + updating a tiny fraction of the model per step), then scale to 4.16B on one GPU and stabilize training. | a usable language model (perplexity ≈ 1355–1391) |
+| **2 · Find where it breaks** *(E)* | With the model fixed, post-train on three task types — sentiment (surface), relational entailment (comprehension), multi-step arithmetic (sequential reasoning) — adding increasing amounts of backprop. | sentiment 79%; relational & multi-step stay at chance |
+| **3 · Try to fix it from inside** *(F–G)* | Five in-model interventions: richer training data, structural training objectives, a non-collapsing readout, training the attention alone, deeper backprop. | none moves the boundary at 4B |
+| **4 · Locate the bottleneck** *(G)* | Probe where the relational information lives in the model. | it is absent from the internal representation entirely |
+| **5 · The control experiment** *(H)* | Swap only the architecture — a standard trainable-attention model with ordinary backprop — and re-run the identical tasks. | real SNLI 33% → 70%; shallow multi-step solved — the barrier was architectural |
+
+---
+
 ## Two entry points
 
 **A · GitHub landing page (you are here)** — 30-second orientation: what this is, the main results, where to look.
@@ -60,13 +75,13 @@ The repo cleanly separates a **product-grade submission** from the **research in
 ├── kaggle_run/                         # official submission kernel (notebook + metadata)
 ├── selfcheck.py · build_kaggle_kernels.py · orchestrate_kaggle.py
 │
-├── phase_e*.py · c1_4b.py · adapt_sentiment.py       # boundary line: post-training limits (Phase E)
-├── f1_data.py · f2_aux.py · h1_attn.py               # boundary line: ZeroBP-native fixes (Phase F)
-├── v2_readout.py · v2_attn.py · v2_deepbp.py         # boundary line: structural probes (Phase G)
-├── task_nli.py · task_arith.py                       # shared synthetic tasks
+├── phase_e*.py · c1_4b.py · adapt_sentiment.py       # stage 2: post-training capability limits
+├── f1_data.py · f2_aux.py · h1_attn.py               # stage 3: in-backbone fixes (data / objectives / attention)
+├── v2_readout.py · v2_attn.py · v2_deepbp.py         # stage 4: probes locating the bottleneck
+├── task_nli.py · task_arith.py                       # shared synthetic reasoning tasks
 ├── track1_sst2_4b.py · track1_radar.py · make_figures.py · build_track1_kernels.py
 │
-├── phase_h/                            # CONTROL: isolated trainable-attention backbone (research-only)
+├── phase_h/                            # stage 5 — the CONTROL: isolated trainable-attention backbone
 │
 ├── paper/                             # the report (EN + 中文)
 │   ├── PAPER_DRAFT.md · PAPER_workshop.md · slides_outline.md  (+ .zh.md)

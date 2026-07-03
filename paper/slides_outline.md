@@ -16,7 +16,7 @@ matrix table (§3), the final scorecard table (§4). Numbers trace to `EXPERIMEN
 **2 — Motivation (the two questions)**
 - How much LM capability survives with **no global backprop**, on a **single T4 / 3 h**?
 - When it fails a task: **algorithm** (too little gradient), **architecture** (backbone can't represent it),
-  or **task-intrinsic**? Usually inseparable — we separate it.
+  or **task-intrinsic**? Usually inseparable — this study separates it.
 - Method preview: **three lines** (Submission → Boundary → Control).
 
 **3 — The submission line: ZeroBP-4B**
