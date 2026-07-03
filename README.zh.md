@@ -4,7 +4,7 @@
 
 **一个资源受限的研究项目**:(1) 在单块 GPU 上构建一个*纯无反向传播*的 40 亿参数语言模型,(2) 系统地测出它的推理能力在哪里失效,(3) 用一个隔离的*可训练注意力对照骨架*把**算法**性限制与**架构**性限制分开。
 
-**接着读:** [完整报告](paper/PAPER_DRAFT.zh.md) · [Workshop 论文(8 页)](paper/PAPER_workshop.zh.md) · [幻灯](paper/slides_outline.zh.md) · [Kaggle 提交](docs/KAGGLE_README.zh.md) · [总档索引](docs/MASTER_ARCHIVE.md)
+**接着读:** [完整报告](paper/PAPER_DRAFT.zh.md) · [Workshop 论文(8 页)](paper/PAPER_workshop.zh.md) · [幻灯](paper/slides_outline.zh.md) · [arXiv 投稿包](paper/arxiv/) · [Kaggle 提交](docs/KAGGLE_README.zh.md) · [总档索引](docs/MASTER_ARCHIVE.md)
 
 ![单块 Tesla T4](https://img.shields.io/badge/hardware-single%20Tesla%20T4-blue) ![零反向传播](https://img.shields.io/badge/training-zero%20backprop-8A2BE2) ![参数](https://img.shields.io/badge/params-4.16B-green) ![可复现](https://img.shields.io/badge/results-deterministic%20%26%20logged-brightgreen)
 

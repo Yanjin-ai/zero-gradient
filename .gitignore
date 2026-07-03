@@ -20,3 +20,9 @@ kaggle_track1_sst2/
 
 # all runtime output (canonical results live in results/ and figures/)
 runs/
+
+# LaTeX build artifacts (arXiv package); keep main.tex + figures + main.pdf
+paper/arxiv/*.aux
+paper/arxiv/*.log
+paper/arxiv/*.out
+paper/arxiv/arxiv-submission.tar.gz

@@ -5,7 +5,7 @@
 
 **A resource-constrained research project** that (1) builds a *pure backprop-free* 4-billion-parameter language model on a single GPU, (2) systematically maps where its reasoning breaks, and (3) uses an isolated *trainable-attention control backbone* to separate **algorithmic** limits from **architectural** ones.
 
-**Read next:** [Full report](paper/PAPER_DRAFT.md) · [Workshop paper (8pp)](paper/PAPER_workshop.md) · [Slides](paper/slides_outline.md) · [Kaggle submission](docs/KAGGLE_README.md) · [Master archive](docs/MASTER_ARCHIVE.md) — *(每份均有中文 `*.zh.md`)*
+**Read next:** [Full report](paper/PAPER_DRAFT.md) · [Workshop paper (8pp)](paper/PAPER_workshop.md) · [Slides](paper/slides_outline.md) · [arXiv package](paper/arxiv/) · [Kaggle submission](docs/KAGGLE_README.md) · [Master archive](docs/MASTER_ARCHIVE.md) — *(每份均有中文 `*.zh.md`)*
 
 ![single Tesla T4](https://img.shields.io/badge/hardware-single%20Tesla%20T4-blue) ![zero autograd](https://img.shields.io/badge/training-zero%20backprop-8A2BE2) ![params](https://img.shields.io/badge/params-4.16B-green) ![reproducible](https://img.shields.io/badge/results-deterministic%20%26%20logged-brightgreen)
 
@@ -116,6 +116,7 @@ Expected submission gates: `final_ppl = 6.251` · zero-autograd **PASS** · dete
 - [`paper/PAPER_workshop.md`](paper/PAPER_workshop.md) — concise paper (~8 pp) for workshop-style submission.
 - [`paper/PAPER_DRAFT.md`](paper/PAPER_DRAFT.md) — full technical report with extended context and an honest **corrections log**.
 - [`paper/slides_outline.md`](paper/slides_outline.md) — 11-slide talk outline.
+- [`paper/arxiv/`](paper/arxiv/) — **complete arXiv submission package** (LaTeX source, figures, compiled `main.pdf`, build `Makefile`). Self-contained; standard TeX Live packages only. Build with `make` or `tectonic main.tex`.
 
 The report is organized around the **three lines** (submission → boundary → control), not chronologically.
 
