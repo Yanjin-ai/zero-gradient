@@ -1,7 +1,7 @@
 <!-- **English** | [中文](slides_outline.zh.md) -->
 **English** | [中文 →](slides_outline.zh.md)
 
-# Slides outline — ZeroBP-4B boundary study + Phase H control (11 slides)
+# Slides outline — ZeroBP-4B boundary study + trainable-attention control (11 slides)
 
 Talk length ~12–15 min. Key visual assets: capability radar (`runs/track1_radar.png`), the task×method
 matrix table (§3), the final scorecard table (§4). Numbers trace to `EXPERIMENT_LEDGER.md`.
@@ -40,12 +40,12 @@ matrix table (§3), the final scorecard table (§4). Numbers trace to `EXPERIMEN
 - Is "ZeroBP can't do NLI" about ZeroBP, the BP budget, or the **backbone** (frozen reservoir + collapse)?
 - Enter the **control**: swap only the backbone, keep everything else standard.
 
-**7 — Phase H: the control (design + G0)**
+**7 — The architectural control (stage 5): design + first check**
 - Standard trainable-attention Transformer, mean-pool, full BP; strictly isolated from the submission.
 - **G0 (same synthetic tasks):** NLI **100%**, 2-step arithmetic **100%** at **0.8M** params.
 - → the boundary is **architectural, not task-intrinsic**.
 
-**8 — Phase H on real data (G1 + G2)**  *(scorecard table begins here)*
+**8 — The control backbone on real data (SNLI + multi-step)**  *(scorecard table begins here)*
 - **Real SNLI: 69.97%** (12.4M) vs ZeroBP chance 33.4% — relational structure installs.
 - **Multi-step depth:** k≤3 = 100%; **k≥4 = wall**, unchanged from 4.7M/6k → 21.3M/15k → **not** under-capacity.
 
@@ -55,14 +55,14 @@ matrix table (§3), the final scorecard table (§4). Numbers trace to `EXPERIMEN
 - Lesson: read capability through a **fair, task-agnostic probe** (twice bitten here).
 
 **10 — Final scorecard + capability radar**  *(scorecard table + `runs/track1_radar.png`)*
-- One slide: the 5-row Phase H vs ZeroBP table + the radar figure.
+- One slide: the 5-row control-vs-ZeroBP table + the radar figure.
 - Story in one line: **new backbone crosses the ZeroBP relational/shallow-multi-step boundary; both have honest limits.**
 
 **11 — Conclusion & future work**
 - ZeroBP-4B: a resource-constrained backprop-free baseline + boundary-measurement tool (good at LM/bag,
   hard-limited on relational/multi-step).
-- Phase H: proves NLI/shallow-multi-step are *learnable*, surfaces a multi-step *depth* research question.
+- The control backbone: proves NLI/shallow-multi-step are *learnable*, surfaces a multi-step *depth* research question.
 - Next: break k≥4 with curriculum / chain-of-thought (not scale); advanced ZeroBP rules on a trainable
-  substrate; scale Phase H on relational/reasoning axes.
+  substrate; scale the control backbone on relational/reasoning axes.
 
 *(Optional backup slides: ZeroBP local-rule detail; erratum + honest-corrections log; SST-2 diagnostic table.)*

@@ -1,6 +1,6 @@
 [English →](slides_outline.md) | **中文**
 
-# 幻灯提纲 —— ZeroBP-4B 边界研究 + Phase H 对照(11 页)
+# 幻灯提纲 —— ZeroBP-4B 边界研究 + 可训练注意力对照(11 页)
 
 演讲时长约 12–15 分钟。关键视觉素材:能力雷达(`runs/track1_radar.png`)、能力对比图(`figures/capability_comparison.png`)、多步之墙(`figures/reasoning_depth_wall.png`)、记分卡(`figures/scorecard.png`)。数字可追溯至 `EXPERIMENT_LEDGER.md`。
 
@@ -34,12 +34,12 @@
 - "ZeroBP 做不了 NLI",是 ZeroBP 的问题、BP 预算的问题、还是**骨架**的问题(冻结 reservoir + 末位塌缩)?
 - 引入**对照**:只换骨架,其余保持标准。
 
-**7 — Phase H:对照(设计 + G0)**
+**7 — 架构对照(第五阶段):设计 + 首验**
 - 标准可训练注意力 Transformer,mean-pool,全 BP;与提交线严格隔离。
 - **G0(同样的合成任务):** NLI **100%**、两步算术 **100%**,仅 **0.8M** 参数。
 - → 边界是**架构性的,不是任务不可学**。
 
-**8 — Phase H 在真实数据上(G1 + G2)** *(记分卡开始)*
+**8 — 对照骨架在真实数据上(SNLI + 多步)** *(记分卡开始)*
 - **真实 SNLI:69.97%**(12.4M)vs ZeroBP chance 33.4% —— 关系结构可安装。
 - **多步深度:** k≤3 = 100%;**k≥4 是墙**,从 4.7M/6k → 21.3M/15k 不动 → **不是**欠容量。
 
@@ -49,12 +49,12 @@
 - 教训:用**公平、任务无关的探针**测能力(本项目被咬两次)。
 
 **10 — 最终记分卡 + 能力雷达** *(记分卡表 + `runs/track1_radar.png`)*
-- 一页:5 行 Phase H vs ZeroBP 表 + 雷达图。
+- 一页:5 行 对照 vs ZeroBP 表 + 雷达图。
 - 一句话故事:**新骨架跨过了 ZeroBP 的关系/浅多步边界;两栈都有诚实上限。**
 
 **11 — 结论与未来工作**
 - ZeroBP-4B:资源受限下的无反向传播基线 + 边界测量工具(擅长 LM/bag,关系/多步硬限)。
-- Phase H:证明 NLI/浅多步*可学*,提出多步*深度*这一新研究问题。
-- 下一步:用 curriculum / chain-of-thought(而非纯扩规模)打破 k≥4 墙;在可训练底座上验证更先进的 ZeroBP 规则;把 Phase H 在关系/推理维度上规模化。
+- 对照骨架:证明 NLI/浅多步*可学*,提出多步*深度*这一新研究问题。
+- 下一步:用 curriculum / chain-of-thought(而非纯扩规模)打破 k≥4 墙;在可训练底座上验证更先进的 ZeroBP 规则;把对照骨架在关系/推理维度上规模化。
 
 *(可选备用页:ZeroBP 局部规则细节;勘误 + 诚实纠错日志;SST-2 诊断表。)*

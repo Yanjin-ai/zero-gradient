@@ -11,7 +11,7 @@
 
 This work studies, under a hard resource budget (a single T4 GPU, 3 h), how far a *backprop-free* large language model can go, and — more importantly — *why* it stops. The study builds **ZeroBP-4B**, a 4.16-billion-parameter content-routed mixture-of-experts (MoE) language model whose entire training uses hand-written **local update rules** and **zero global backpropagation** (no `autograd`), and locks it as a deterministic, reproducible Kaggle submission (WikiText-103 test perplexity ≈ 1391 early-stop / ≈ 1355 full-budget). On this fixed backbone the study then maps a **capability boundary** across three task structures that probe modern-LLM competencies — bag-style sentiment, relational entailment (NLI), and multi-step modular arithmetic — under increasing amounts of injected backprop (BP). The boundary is sharp and *structural*: a little embedding-path BP lifts sentiment from 60% to 79%, but neither a little nor a *deep* BP installs relational or multi-step structure at 4B (both stay at chance), and three "ZeroBP-native" routes (richer data, structural auxiliary targets, local attention rules) each add ≤ 2 pp. A non-collapsing-readout probe shows the relational structure is *not present anywhere* in the frozen representation.
 
-To test whether these failures are properties of the *tasks* or of the *architecture*, the study introduces **Phase H**, a strictly isolated control: a standard multi-layer trainable-attention Transformer trained with ordinary full backprop. The same synthetic tasks that cap ZeroBP at 65.7% / chance are solved to 100% by a 0.8M-parameter Phase-H model; on **real SNLI** Phase H reaches **69.97%** where ZeroBP-4B is at chance (33.4%). The picture is not a clean win, and the outcome is reported plainly: Phase H installs shallow multi-step reasoning (k ≤ 3 = 100%) but hits its *own* **scale-resistant depth wall** at k ≥ 4 (unchanged from 4.7M/6k-step to 21.3M/15k-step models); a from-scratch character LM reaches only 2% exact-match on real GSM8K; and *neither* stack does real sentiment (SST-2 ≈ chance for ZeroBP once a readout-collapse artifact is corrected). Two of the study's working hypotheses were refuted by the data along the way and are corrected in the record. The result is a complete arc: **the ZeroBP relational/multi-step ceiling is architectural, not fundamental — a trainable-attention backbone crosses it on real relational data and shallow multi-step reasoning, while exposing new, honest limits of its own.**
+To test whether these failures are properties of the *tasks* or of the *architecture*, the study introduces a strictly isolated **architectural control** (the fifth and final stage) — a standard multi-layer trainable-attention Transformer trained with ordinary full backprop. The same synthetic tasks that cap ZeroBP at 65.7% / chance are solved to 100% by a 0.8M-parameter control model; on **real SNLI** the control backbone reaches **69.97%** where ZeroBP-4B is at chance (33.4%). The picture is not a clean win, and the outcome is reported plainly: the control backbone installs shallow multi-step reasoning (k ≤ 3 = 100%) but hits its *own* **scale-resistant depth wall** at k ≥ 4 (unchanged from 4.7M/6k-step to 21.3M/15k-step models); a from-scratch character LM reaches only 2% exact-match on real GSM8K; and *neither* stack does real sentiment (SST-2 ≈ chance for ZeroBP once a readout-collapse artifact is corrected). Two of the study's working hypotheses were refuted by the data along the way and are corrected in the record. The result is a complete arc: **the ZeroBP relational/multi-step ceiling is architectural, not fundamental — a trainable-attention backbone crosses it on real relational data and shallow multi-step reasoning, while exposing new, honest limits of its own.**
 
 ---
 
@@ -25,12 +25,14 @@ Modern large language models are trained with global backpropagation at enormous
 This work approaches both with a deliberately layered study organized as **three lines**:
 
 - **The submission line** (§3): a pure-ZeroBP 4B MoE LM, engineered to be a clean, deterministic, resource-budget baseline with *zero* autograd anywhere in the training path.
-- **The boundary line** (§4): with that backbone *frozen as an object of study*, the study measures a task × method capability matrix (Phase E/F/G), injecting increasing amounts of BP into embeddings, attention, and blocks, and testing three ZeroBP-native structural levers.
-- **The control line** (§5): a strictly isolated **Phase H** stack — a standard trainable-attention Transformer with ordinary full BP — used as an architectural control to ask whether the boundary of the second line is caused by the backbone.
+- **The boundary line** (§4): with that backbone *frozen as an object of study*, the study measures a task × method capability matrix (stages 2–4), injecting increasing amounts of BP into embeddings, attention, and blocks, and testing three ZeroBP-native structural levers.
+- **The control line** (§5): a strictly isolated **control-backbone** stack — a standard trainable-attention Transformer with ordinary full BP — used as an architectural control to ask whether the boundary of the second line is caused by the backbone.
+
+These lines form a strict progression — each step is motivated by the result of the previous one, not run in parallel. **Stage 1** establishes that a backprop-free model works at all. Only because it works does **stage 2** ask where post-training succeeds and fails; only because reasoning fails does **stage 3** try to remove the failure from inside the backbone; only because those fixes fail does **stage 4** probe *where* the missing structure lives. That diagnosis — the structure is absent from the representation — yields a falsifiable hypothesis that the limit is *architectural*, which **stage 5** tests by swapping only the architecture. (The submission line is stage 1; the boundary line spans stages 2–4; the control line is stage 5.)
 
 The contribution is not a new state-of-the-art number. It is a **controlled boundary study**: a reproducible backprop-free 4B baseline, a systematic capability matrix with a clean submission/research isolation discipline, and an architectural control that turns "ZeroBP can't do NLI" into the sharper, falsifiable claim "*this backbone* can't, and *here is a backbone that can*, and *here is where even that one stops*."
 
-Three methodological commitments shape the results that shaped the results: (i) **fair readout** — capabilities are measured with a fresh, task-agnostic readout head, because an unfair readout was found to fabricate or destroy apparent capability (§4.4, §5.5); (ii) **single-lever changes** — each experiment moves one structural degree of freedom; and (iii) **honest correction** — two of two of the study's hypotheses were refuted by later runs, and the corrections are reported rather than the original guesses.
+Three methodological commitments shaped the results: (i) **fair readout** — capabilities are measured with a fresh, task-agnostic readout head, because an unfair readout was found to fabricate or destroy apparent capability (§4.4, §5.5); (ii) **single-lever changes** — each experiment moves one structural degree of freedom; and (iii) **honest correction** — two of the study's hypotheses were refuted by later runs, and the corrections are reported rather than the original guesses.
 
 ---
 
@@ -73,13 +75,13 @@ A self-contained submission embeds the current trainer and runs the **default (p
 - A gate suite asserts: resident params ≥ target, **zero autograd**, monotone loss, val-ppl < unigram, **determinism (re-run identical)**, and no late drift. The small-config smoke default reproduces `final_ppl = 6.251` deterministically; the full 4B run fits the T4 at ~8.3 GB peak and ~8546 tok/s.
 - A real reproducibility bug was fixed: an earlier submission notebook embedded a *pre-improvement word-level snapshot*; the notebook was rebuilt from the current single-source trainer so the submission reflects the documented BPE+MLP configuration.
 
-**Baseline result.** With BPE subword tokenization + a 2-layer MLP readout head + a cosine-with-routing-freeze ("Phase C") schedule, ZeroBP-4B reaches **WikiText-103 test perplexity ≈ 1391** (early stop, t\* ≈ 54 min) / **≈ 1355** (full ~2.9 h budget), improving on an earlier word-level stage (≈ 1360) and on the unigram baseline by ~51%. The 2-layer MLP head was a large lever; a naïve linear head is much weaker. This gives a clean, deterministic, backprop-free 4B object for the boundary study.
+**Baseline result.** With BPE subword tokenization + a 2-layer MLP readout head + a cosine-with-routing-freeze schedule, ZeroBP-4B reaches **WikiText-103 test perplexity ≈ 1391** (early stop, t\* ≈ 54 min) / **≈ 1355** (full ~2.9 h budget), improving on an earlier word-level stage (≈ 1360) and on the unigram baseline by ~51%. The 2-layer MLP head was a large lever; a naïve linear head is much weaker. This gives a clean, deterministic, backprop-free 4B object for the boundary study.
 
 **Engineering erratum (relevant to §4).** A `load_state_dict` CPU-aliasing bug was found and fixed (clone-on-load) that had contaminated some *multi-reset small-config* experiments (the reset base aliased the golden checkpoint, which was then polluted in place). All small-config numbers below are the corrected values; **4B and single-shot experiments were unaffected** (CUDA copies + single-shot isolation), so the 79% breakthrough and the 4B matrix rows are unchanged. This episode is why small-config results are treated as *indicative* and require 4B confirmation before locking a capability claim.
 
 ---
 
-## 4. The boundary line: a ZeroBP capability matrix (Phase E/F/G)
+## 4. The boundary line: a ZeroBP capability matrix (stages 2–4)
 
 The ZeroBP backbone is now held fixed to ask what post-training can install, injecting BP only into **embedding / attention / task-head** parameters (never changing the architecture skeleton). All accuracies use a **fair readout**: a fresh closed-form (autograd-free) classification head trained on the *frozen* adapted representation, so measuring whether the *representation* gained structure rather than whether a BP head overfit.
 
@@ -103,7 +105,7 @@ Key locked results:
 - **NLI does not transfer.** At 4B, zero-shot / emb-BP / emb+attn-BP are **all chance (33.4%)**; a large-budget retry (3000 steps, attn lr 0.5) is still chance, so this is a structural limit, not undertraining.
 - **Multi-step is uninstallable.** Even at small config the 2-step task fails its gate under any BP component (~chance); it is not carried to 4B.
 
-### 4.3 Three ZeroBP-native structural levers (Phase F)
+### 4.3 Three ZeroBP-native structural levers (stage 3)
 
 Can ZeroBP install relational structure *without* crossing into BP? Three routes:
 
@@ -113,7 +115,7 @@ Can ZeroBP install relational structure *without* crossing into BP? Three routes
 
 A little BP, by contrast, *partially* installs it in the small config (fresh-head NLI 51.3% → **58.8%** via embedding, → 59.1% adding attention) — but the extra from attention is only **+0.3 pp**, embedding dominates, and it **does not transfer to 4B**. The wall is **BP-vs-ZeroBP**, and within BP it is **embedding**, not attention, that carries the (limited) signal.
 
-### 4.4 Where is the relational structure? (Phase G, v2.0 probes)
+### 4.4 Where is the relational structure? (stage 4: structural probes)
 
 A research-only "v2.0" space was opened to test three structural levers on the backbone, each single-lever and never touching the submission:
 
@@ -131,19 +133,19 @@ The natural objection: is this a property of ZeroBP, of the amount of BP, or of 
 
 ---
 
-## 5. The control line: Phase H, a trainable-attention backbone
+## 5. The control line: the control backbone, a trainable-attention model
 
 ### 5.1 Design and isolation
 
-Phase H (a "v3.0" research stack, governed by ADR-005 and a dedicated charter) is a clean break: a **standard pre-LN Transformer** with multi-head **bidirectional self-attention**, GELU-MLP blocks, residual connections, and a **non-collapsing mean-pool readout**, trained by **ordinary full backprop (AdamW)**. It is deliberately *not* clever — the point is to use a conventional backbone as an architectural control. It is **strictly isolated**: `phase_h/` has zero dependency on the ZeroBP trainer (pure PyTorch, movable to a separate repo), the submission never imports it, and the submission's default path (`final_ppl 6.251`, zero autograd) is re-verified after every change.
+The control backbone (a "v3.0" research stack, governed by ADR-005 and a dedicated charter) is a clean break: a **standard pre-LN Transformer** with multi-head **bidirectional self-attention**, GELU-MLP blocks, residual connections, and a **non-collapsing mean-pool readout**, trained by **ordinary full backprop (AdamW)**. It is deliberately *not* clever — the point is to use a conventional backbone as an architectural control. It is **strictly isolated**: `phase_h/` has zero dependency on the ZeroBP trainer (pure PyTorch, movable to a separate repo), the submission never imports it, and the submission's default path (`final_ppl 6.251`, zero autograd) is re-verified after every change.
 
 Evaluation uses the *same* synthetic distributions used in §4 (apples-to-apples) plus real SNLI, real GSM8K, and real SST-2, with the same fair-readout discipline.
 
 ### 5.2 G0 — is the backbone the limit? (synthetic)
 
-A 0.80M-parameter, 4-layer, 4-head Phase-H model trained with full BP on the *same* synthetic tasks:
+A 0.80M-parameter, 4-layer, 4-head control model trained with full BP on the *same* synthetic tasks:
 
-| Task (synthetic, same dist as §4) | Phase H | ZeroBP-4B / small (§4) |
+| Task (synthetic, same dist as §4) | Control | ZeroBP-4B / small (§4) |
 |---|---|---|
 | NLI (3-class) | **100%** @ step 500 | deep-BP 65.7% (small) / chance (4B) |
 | 2-step arithmetic (5-class) | **100%** @ step 1000 | chance at *every* BP depth |
@@ -152,11 +154,11 @@ A single 0.8M standard trainable-attention model installs *both* the relational 
 
 ### 5.3 G1 — real relational data (SNLI)
 
-Scaling to a 12.4M-parameter (6-layer, 8-head, d=256) Phase-H model trained with full BP on **real SNLI** (549k train / 9.8k val, 12.9k steps): **val accuracy = 69.97%** (majority 33.8%). ZeroBP-4B on NLI is **chance (33.4%)**. The new backbone reaches a modern small-LLM tier on a real relational benchmark that the ZeroBP stack structurally cannot — an empirical crossing of the ADR-002 boundary. (Because Phase H is a separate stack, this does *not* revise any locked ZeroBP conclusion; it *contextualizes* it.)
+Scaling to a 12.4M-parameter (6-layer, 8-head, d=256) control model trained with full BP on **real SNLI** (549k train / 9.8k val, 12.9k steps): **val accuracy = 69.97%** (majority 33.8%). ZeroBP-4B on NLI is **chance (33.4%)**. The new backbone reaches a modern small-LLM tier on a real relational benchmark that the ZeroBP stack structurally cannot — an empirical crossing of the ADR-002 boundary. (Because the control backbone is a separate stack, this does *not* revise any locked ZeroBP conclusion; it *contextualizes* it.)
 
 ### 5.4 G2 — how deep does multi-step go?
 
-A sweep over the number of sequential steps k on the arithmetic fold, training a fresh Phase-H model per depth, at two scales:
+A sweep over the number of sequential steps k on the arithmetic fold, training a fresh control model per depth, at two scales:
 
 | n_steps | v1: 6L×8H d256, 4.7M, 6k steps | deep: 12L×8H d384, 21.3M, 15k steps |
 |---|---|---|
@@ -166,7 +168,7 @@ A sweep over the number of sequential steps k on the arithmetic fold, training a
 | k = 6 | 19.9% | **19.8%** |
 | k = 8 | 20.6% | **21.4%** |
 
-(chance = 20%). Phase H installs **shallow multi-step (k ≤ 3 = 100%)**, decisively past ZeroBP (chance at *any* depth, failing even the k = 2 gate). But k ≥ 4 is a **wall**: **5× the parameters and 2.5× the steps moved it essentially nothing**. This **refuted the "under-capacity" hypothesis** — the k ≥ 4 failure is not solved by scale under this formulation. The formulation is flagged honestly: the task is *direct answer-classification* with a mean-pool readout and **no curriculum and no chain-of-thought** — the two mechanisms most likely to break the k ≥ 4 wall, and untested here.
+(chance = 20%). the control backbone installs **shallow multi-step (k ≤ 3 = 100%)**, decisively past ZeroBP (chance at *any* depth, failing even the k = 2 gate). But k ≥ 4 is a **wall**: **5× the parameters and 2.5× the steps moved it essentially nothing**. This **refuted the "under-capacity" hypothesis** — the k ≥ 4 failure is not solved by scale under this formulation. The formulation is flagged honestly: the task is *direct answer-classification* with a mean-pool readout and **no curriculum and no chain-of-thought** — the two mechanisms most likely to break the k ≥ 4 wall, and untested here.
 
 ### 5.5 G2b and SST-2 — honest limits and a readout-collapse lesson
 
@@ -175,7 +177,7 @@ A sweep over the number of sequential steps k on the arithmetic fold, training a
 
 ### 5.6 Final scorecard
 
-| Dimension | Phase H (new backbone) | ZeroBP-4B (locked) | Conclusion |
+| Dimension | Control backbone (new arch) | ZeroBP-4B (locked) | Conclusion |
 |---|---|---|---|
 | Synthetic NLI + arithmetic (G0) | 100% / 100% | 65.7% (small) / chance | backbone is the limit |
 | Real SNLI (G1) | **69.97%** | 33.4% (chance) | relational structure installable in the new stack |
@@ -193,7 +195,7 @@ Three readings are now separable because each was varied one at a time:
 
 **BP is necessary but not sufficient — it needs a trainable structural substrate.** A little BP installs bag structure but not relational/multi-step structure *on this backbone*; the same tasks are trivially installed by full BP *on a trainable-attention backbone* (§5.2). So gradient is only useful where the architecture provides a trainable place for structure to live (attention alignment, sequential depth). This reframes "ZeroBP can't do NLI" as "**no amount of BP into a frozen-reservoir/last-collapse backbone installs relational structure; a standard attention backbone does so easily.**"
 
-**Task structure sets the difficulty ordering, and even a good backbone has honest limits.** Across both stacks the ordering is consistent — bag ≪ relational ≪ multi-step-depth ≪ real generative math. Phase H crosses the relational boundary and shallow multi-step, but its **k ≥ 4 depth wall is scale-resistant** (§5.4), suggesting that deep sequential reasoning needs *more than backbone + scale* — plausibly curriculum, intermediate supervision, or chain-of-thought (explicitly generating the running value), none of which was tested. The generative-GSM8K and real-SST-2 results bound the claim further: crossing a boundary on a controlled task is not the same as general capability.
+**Task structure sets the difficulty ordering, and even a good backbone has honest limits.** Across both stacks the ordering is consistent — bag ≪ relational ≪ multi-step-depth ≪ real generative math. the control backbone crosses the relational boundary and shallow multi-step, but its **k ≥ 4 depth wall is scale-resistant** (§5.4), suggesting that deep sequential reasoning needs *more than backbone + scale* — plausibly curriculum, intermediate supervision, or chain-of-thought (explicitly generating the running value), none of which was tested. The generative-GSM8K and real-SST-2 results bound the claim further: crossing a boundary on a controlled task is not the same as general capability.
 
 **Methodological takeaway.** Two apparent results in this study were artifacts of the *readout*, not the representation (the 57% sentiment SGD-head confound in §4.2, and the 49% SST-2 head collapse in §5.5). Capability claims about representations should always be made through a **fair, task-agnostic probe**, and ideally *two* (closed-form and BP-linear), which here disagreed exactly when one of them had degenerated.
 
@@ -201,11 +203,11 @@ Three readings are now separable because each was varied one at a time:
 
 ## 7. Conclusion and future work
 
-This report has presented a three-line boundary study. **ZeroBP-4B** is a reproducible, deterministic, backprop-free 4B language model that is genuinely useful under a single-T4 budget for LM and bag-style tasks (WikiText-103 ppl ≈ 1355–1391; sentiment 79%), and serves as a controllable object for measuring capability boundaries. Those boundaries — relational and multi-step failure — are shown to be **architectural** by a strictly isolated **Phase H** control: a standard trainable-attention Transformer with full BP solves the same synthetic tasks to 100%, reaches **69.97%** on real SNLI (vs. chance), and installs shallow multi-step reasoning — while exposing its *own* honest limits: a scale-resistant multi-step depth wall at k ≥ 4, ~2% on real GSM8K, and near-chance real SST-2 that also afflicts ZeroBP.
+This report has presented a three-line boundary study. **ZeroBP-4B** is a reproducible, deterministic, backprop-free 4B language model that is genuinely useful under a single-T4 budget for LM and bag-style tasks (WikiText-103 ppl ≈ 1355–1391; sentiment 79%), and serves as a controllable object for measuring capability boundaries. Those boundaries — relational and multi-step failure — are shown to be **architectural** by a strictly isolated an isolated **architectural control**: a standard trainable-attention Transformer with full BP solves the same synthetic tasks to 100%, reaches **69.97%** on real SNLI (vs. chance), and installs shallow multi-step reasoning — while exposing its *own* honest limits: a scale-resistant multi-step depth wall at k ≥ 4, ~2% on real GSM8K, and near-chance real SST-2 that also afflicts ZeroBP.
 
-**Roles.** ZeroBP-4B: a resource-constrained pretraining + boundary-measurement tool, effective on LM/simple composition, hard-limited on relational/multi-step. Phase H: a modern-backbone baseline demonstrating that NLI and shallow multi-step are *learnable* (not task-intrinsic barriers) and surfacing a new depth-of-reasoning research question.
+**Roles.** ZeroBP-4B: a resource-constrained pretraining + boundary-measurement tool, effective on LM/simple composition, hard-limited on relational/multi-step. the control backbone: a modern-backbone baseline demonstrating that NLI and shallow multi-step are *learnable* (not task-intrinsic barriers) and surfacing a new depth-of-reasoning research question.
 
-**Future work.** (i) Break the k ≥ 4 wall with curriculum / chain-of-thought / intermediate supervision rather than raw scale; (ii) test whether *advanced* ZeroBP local rules on a *trainable-attention* substrate can recover part of the Phase-H capability without full BP (combining the two lines); (iii) scale Phase H (data + parameters, MNLI/GSM8K) toward modern small-LLM behavior on the relational/reasoning axes; (iv) push ZeroBP-4B's LM quality with better local rules while preserving zero-autograd purity.
+**Future work.** (i) Break the k ≥ 4 wall with curriculum / chain-of-thought / intermediate supervision rather than raw scale; (ii) test whether *advanced* ZeroBP local rules on a *trainable-attention* substrate can recover part of the control backbone's capability without full BP (combining the two lines); (iii) scale the control backbone (data + parameters, MNLI/GSM8K) toward modern small-LLM behavior on the relational/reasoning axes; (iv) push ZeroBP-4B's LM quality with better local rules while preserving zero-autograd purity.
 
 ---
 
@@ -213,7 +215,7 @@ This report has presented a three-line boundary study. **ZeroBP-4B** is a reprod
 
 - **Submission (pure ZeroBP):** `kaggle_zerograd_moe.py` (single source) + generated submission notebook; default path asserts zero autograd and reproduces `final_ppl 6.251` deterministically. Purity checklist in `SUBMISSION.md`.
 - **Boundary line (research BP, isolated):** `phase_e*.py`, `phasee_nli_4b.py`, `f1_data.py`, `f2_aux.py`, `h1_attn.py`, `v2_readout.py`, `v2_attn.py`, `v2_deepbp.py`, `task_nli.py`, `task_arith.py`.
-- **Control line (Phase H, isolated):** `phase_h/ph_base.py` (Transformer + causal LM), `ph_nli.py`/`ph_arith.py` (G0), `ph_nli_gpu.py` (G1), `ph_gsm_gpu.py` (G2 depth sweep), `ph_gsm_gen.py` (G2b), `track1_sst2_4b.py` (SST-2 with prediction-distribution + BP-linear-probe diagnostics).
+- **Control line (the control backbone, isolated):** `phase_h/ph_base.py` (Transformer + causal LM), `ph_nli.py`/`ph_arith.py` (G0), `ph_nli_gpu.py` (G1), `ph_gsm_gpu.py` (G2 depth sweep), `ph_gsm_gen.py` (G2b), `track1_sst2_4b.py` (SST-2 with prediction-distribution + BP-linear-probe diagnostics).
 - **Governance:** ADR-001…005, `ARCHITECTURE.md`, `Phase-*/charter.md`, `EXPERIMENT_LEDGER.md`, `MASTER_ARCHIVE.md`. Each locked number carries a commit hash in the ledger.
 - **Compute:** single Kaggle T4; concurrency capped at 2 GPU sessions; per-run summaries pulled to `runs/*.json`.
 
